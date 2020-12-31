@@ -143,10 +143,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dooked.cpp" />
+    <ClCompile Include="source\domainname.cpp" />
     <ClCompile Include="source\resolver.cpp" />
     <ClCompile Include="source\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\domainname.hpp" />
     <ClInclude Include="include\resolver.hpp" />
     <ClInclude Include="include\utils.hpp" />
   </ItemGroup>

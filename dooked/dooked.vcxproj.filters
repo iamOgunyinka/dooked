@@ -24,12 +24,18 @@
     <ClCompile Include="source\resolver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\domainname.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\utils.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\resolver.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\domainname.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

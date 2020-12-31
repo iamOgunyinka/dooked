@@ -230,10 +230,7 @@ void custom_resolver_socket_t::parse_dns_body(
 }
 
 dns_body_t custom_resolver_socket_t::parse_dns_body_impl(
-    ucstring::const_pointer body_begin) 
-{
-
-}
+    ucstring::const_pointer body_begin) {}
 
 void custom_resolver_socket_t::parse_dns_header(dns_packet_t &packet) {
   static constexpr std::size_t const dns_packet_min_size = 17;
@@ -356,5 +353,57 @@ ucstring::const_pointer custom_resolver_socket_t::parse_dns_qname(
     }
   }
   return end;
+}
+
+std::uint16_t uint16_value(unsigned char const *buff) {
+  return buff[0] * 256 + buff[1];
+}
+
+void alternate_parse_dns(dns_packet_t &packet, ucstring const &buff) {
+  int const buffer_len = buff.size();
+  if (buffer_len < 12) {
+    throw invalid_dns_response_t("Corrupted DNS packet: too small for header");
+  }
+
+  auto &header = packet.head.header;
+  auto const *data = buff.data();
+
+  header.id = uint16_value(data);
+  header.qr = data[2] & 128;
+  header.opcode = (data[2] & 120) >> 3;
+  header.aa = data[2] & 4;
+  header.tc = data[2] & 2;
+  header.rd = data[2] & 1;
+  header.ra = data[3] & 128;
+  header.z = (data[3] & 112) >> 3;
+  header.rcode = data[3] & 15;
+
+  int const qdc = uint16_value(data + 4);
+  int const adc = uint16_value(data + 6);
+  int const nsc = uint16_value(data + 8);
+  int const arc = uint16_value(data + 10);
+  int pos = 12;
+  /* read question section */
+  std::vector<dns_question_t> questions{};
+
+  for (int t = 0; t < qdc; t++) {
+    if (pos >= buffer_len) {
+      throw invalid_dns_response_t("Message too small for question item!");
+    }
+    int const x = dom_comprlen(buff, pos);
+    if (pos + x + 4 > buffer_len) {
+      throw invalid_dns_response_t("Message too small for question item !");
+    }
+    auto const dns_type = uint16_value(data + pos + x);
+    auto const dns_class = uint16_value(data + pos + x + 2);
+    questions.push_back(
+        dns_question_t(domainname(buff, pos), dns_type, dns_class));
+
+    pos += x;
+    pos += 4;
+  }
+
+  /* read other sections */
+  read_section(answers, adc, buff, pos);
 }
 } // namespace dooked

@@ -108,4 +108,88 @@ std::uint16_t get_random_integer() {
   return uid(gen);
 }
 
+int dom_comprlen(ucstring const &buff, int ix) {
+  int len = 0;
+  unsigned char x;
+  auto ptr = buff.data() + ix;
+  auto end = buff.data() + buff.size();
+
+  while (true) {
+    if (ptr >= end) {
+      throw invalid_dns_response_t("Domain name exceeds message borders");
+    }
+
+    if (*ptr == 0)
+      /* we're at the end! */
+      return len + 1;
+
+    if ((*ptr & 192) == 192) {
+      if (ptr + 1 >= end) {
+        throw invalid_dns_response_t(
+            "Compression offset exceeds message borders");
+      }
+      return len + 2;
+    }
+    x = *ptr & 192;
+    if (x != 0) {
+      throw invalid_dns_response_t("Unknown domain label type");
+    }
+    len += *ptr + 1;
+    ptr += *ptr + 1;
+    if (len >= 255) {
+      throw invalid_dns_response_t("Domain name too long");
+    }
+  }
+}
+
+ucstring dom_uncompress(ucstring const &buff, int ix) {
+  int reclevel = 0, len = 0, val = 0;
+  auto ptr = buff.data() + ix;
+  auto end = buff.data() + buff.size();
+  unsigned char dbuff[255];
+  static constexpr int const dom_reclevel = 10;
+
+  while (true) {
+    if (ptr >= end) {
+      throw invalid_dns_response_t("Domain name exceeds message borders");
+    }
+    if (*ptr == 0) {
+      /* we're at the end! */
+      dbuff[len] = '\0';
+      return dbuff;
+    }
+
+    if ((*ptr & 192) == 192) {
+      if (++reclevel >= dom_reclevel) {
+        throw invalid_dns_response_t("Max dom recursion level reached");
+      }
+      if (ptr + 1 >= end) {
+        throw invalid_dns_response_t(
+            "Compression offset exceeds message borders");
+      }
+      val = (ptr[0] & 63) * 256 + ptr[1];
+      if (val >= (ptr - buff.data())) {
+        throw invalid_dns_response_t("Bad compression offset");
+      }
+      ptr = buff.data() + val;
+      continue;
+    }
+
+    if ((*ptr & 192) != 0) {
+      throw invalid_dns_response_t("Unknown domain label type");
+    }
+    if (len + *ptr + 1 >= 255) {
+      throw invalid_dns_response_t("Domain name too long");
+    }
+    if (ptr + *ptr + 1 >= end) {
+      throw invalid_dns_response_t("Domain name exceeds message borders");
+    }
+    memcpy(dbuff + len, ptr, *ptr + 1);
+    len += *ptr + 1;
+    ptr += *ptr + 1;
+  }
+
+  //  return domdup(dbuff);
+}
+
 } // namespace dooked

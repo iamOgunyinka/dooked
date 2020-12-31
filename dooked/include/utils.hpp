@@ -29,6 +29,11 @@ struct invalid_dns_response_t : std::exception {
   invalid_dns_response_t(char const *w) : std::exception{w} {}
 };
 
+struct general_exception_t : std::exception {
+  general_exception_t(char const *w) : std::exception{w} {}
+  general_exception_t(std::string const &w) : std::exception{w} {}
+};
+
 struct bad_name_exception_t : std::runtime_error {
   bad_name_exception_t(std::string const &domain_name)
       : std::runtime_error{domain_name} {}
@@ -83,6 +88,7 @@ struct domain_t {
 };
 
 // name aliases
+using ucstring = std::basic_string<unsigned char>;
 using a_record_t = ip_address_t;
 using aaaa_record_t = ip_address_t;
 using domain_list_t = synced_queue_t<domain_t>;
@@ -94,4 +100,7 @@ bool is_json_file(std::string const &file_extension);
 opt_domain_list_t get_domain_names(std::string const &filename);
 std::string get_file_extension(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
+std::uint16_t uint16_value(unsigned char const *buff);
+int dom_comprlen(ucstring const &, int);
+ucstring dom_uncompress(ucstring const &, int);
 } // namespace dooked

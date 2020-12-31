@@ -207,7 +207,6 @@ struct resolver_address_t {
   net::ip::udp::endpoint ep{};
 };
 
-using ucstring = std::basic_string<unsigned char>;
 using resolver_address_list_t = circular_queue_t<resolver_address_t>;
 
 class custom_resolver_socket_t {
@@ -254,4 +253,5 @@ public:
 void create_query(std::string const &name, std::uint16_t type, std::uint16_t id,
                   ucstring &bufp);
 
+void alternate_parse_dns(dns_packet_t &, ucstring const &);
 } // namespace dooked
