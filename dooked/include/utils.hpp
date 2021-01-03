@@ -31,7 +31,7 @@ struct invalid_dns_response_t : std::exception {
 
 struct general_exception_t : std::exception {
   general_exception_t(char const *w) : std::exception{w} {}
-  general_exception_t(std::string const &w) : std::exception{w} {}
+  general_exception_t(std::string const &w) : std::exception{w.c_str()} {}
 };
 
 struct bad_name_exception_t : std::runtime_error {
@@ -50,30 +50,32 @@ public:
   synced_queue_t() = default;
   synced_queue_t(synced_queue_t const &) = delete;
   synced_queue_t(synced_queue_t &&queue)
-      : container{std::move(queue.container)}, mutex{std::move(queue.mutext)} {}
+      : container{std::move(queue.container)} {}
   void push_back(T const &item) { container.push_back(item); }
   void push_back(T &&item) { container.push(std::move(item)); }
   T next_item() {
     std::lock_guard<std::mutex> lockg{mutex};
     if (container.empty()) {
-      throw empty_container{};
+      throw empty_container_exception_t{};
     }
-    return container.pop();
+    T data = container.front();
+    container.pop();
+    return data;
   }
 };
 
 template <typename T> class circular_queue_t {
   std::vector<T> const container_;
-  mutable std::vector<T>::size_type index_ = 0;
+  mutable typename std::vector<T>::size_type index_ = 0;
 
 public:
   circular_queue_t(std::vector<T> &&container)
       : container_{std::move(container)} {}
   T const &next_item() const {
     if (index_ >= container_.size()) {
-      index = 0;
+      index_ = 0;
     }
-    return container_[index++];
+    return container_[index_++];
   }
 };
 

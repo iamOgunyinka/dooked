@@ -34,19 +34,19 @@ void domfromlabel(ucstring_ptr dom, char const *label, int len) {
 int txt_to_ip(unsigned char ip[4], char const *_buff, bool do_portion) {
   char *buff = (char *)_buff;
   int p = 0, tmp = 0, node = 0;
-  if (strcmpi(buff, "any") == 0) {
+  if (_strcmpi(buff, "any") == 0) {
     ip[0] = 0;
     ip[1] = 0;
     ip[2] = 0;
     ip[3] = 0;
     return 4;
-  } else if (strcmpi(buff, "local") == 0) {
+  } else if (_strcmpi(buff, "local") == 0) {
     ip[0] = 127;
     ip[1] = 0;
     ip[2] = 0;
     ip[3] = 1;
     return 4;
-  } else if (strcmpi(buff, "none") == 0) {
+  } else if (_strcmpi(buff, "none") == 0) {
     ip[0] = 255;
     ip[1] = 255;
     ip[2] = 255;
@@ -192,9 +192,9 @@ int txt_to_ipv6(unsigned char ipv6[16], char const *buff, bool do_portion) {
   int x;
 
   memset(ipv6, 0, 16);
-  if (strcmpi(buff, ":any") == 0)
+  if (_strcmpi(buff, ":any") == 0)
     return 16;
-  if (strcmpi(buff, ":local") == 0) {
+  if (_strcmpi(buff, ":local") == 0) {
     ipv6[15] = 1;
     return 16;
   }
@@ -288,11 +288,11 @@ void txt_to_ip6range(unsigned char *iprange, char const *val) {
   char buff[128];
   char *ptr;
   int x, z;
-  if (strcmpi(val, "any") == 0) {
+  if (_strcmpi(val, "any") == 0) {
     memset(iprange, 0, 32);
     return;
   }
-  if (strcmpi(val, "none") == 0) {
+  if (_strcmpi(val, "none") == 0) {
     memset(iprange, 255, 16);
     memset(iprange + 16, 0, 16);
     return;
@@ -568,7 +568,7 @@ int domncommon(ucstring_cptr _dom1, ucstring_cptr _dom2) {
   return x;
 }
 
-domainname::domainname() : domain{(unsigned char *)strdup("")} {}
+domainname::domainname() : domain{(unsigned char *)_strdup("")} {}
 
 domainname::domainname(char const *string, domainname const &origin) {
   unsigned char tmp[0xFF];

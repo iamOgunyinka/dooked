@@ -195,6 +195,15 @@ struct dns_record_t {
   std::variant<net::ip::address, ucstring> rdata{};
 };
 
+struct dns_alternate_record_t {
+  domainname name{};
+  dns_record_type type;  // RR TYPE (2 octets)
+  uint16_t dns_class_{}; // RR CLASS codes(2 octets)
+  uint16_t rd_length{};  // length in octets of the RDATA field.
+  uint32_t ttl{};        // time to live(4 octets)
+  ucstring_ptr rdata{};
+};
+
 struct dns_body_t {
   std::vector<dns_record_t> answers{};
   std::vector<dns_record_t> authorities{};
@@ -261,4 +270,10 @@ void create_query(std::string const &name, std::uint16_t type, std::uint16_t id,
                   ucstring &bufp);
 
 void alternate_parse_dns(dns_packet_t &, ucstring &);
+void read_section(std::vector<dns_alternate_record_t> &, int, ucstring &,
+                  int &);
+std::uint32_t uint32_value(unsigned char const *buff);
+dns_alternate_record_t read_raw_record(ucstring &buf, int &pos);
+void raw_record_read(dns_record_type, ucstring_ptr &, std::uint16_t &, ucstring &, int,
+                     int);
 } // namespace dooked

@@ -37,3 +37,36 @@ TEST_CASE("Testing the readability of files", "[utils.hpp]") {
 
   SECTION("Testing file content extraction") {}
 }
+
+namespace dooked {
+void *memdup(const void *src, int len) {
+  if (len == 0) {
+    return nullptr;
+  }
+  void *ret = malloc(len);
+  memcpy(ret, src, len);
+  return ret;
+}
+
+using ucstring_ptr = unsigned char *;
+using ucstring_cptr = unsigned char const *;
+
+int domlen(ucstring_cptr dom) {
+  int len = 1;
+  while (*dom) {
+    if (*dom > 63) {
+      throw std::runtime_error("Unknown domain nibble");
+    }
+    len += *dom + 1;
+    dom += *dom + 1;
+    if (len > 255) {
+      throw std::runtime_error("Length too long");
+    }
+  }
+  return len;
+}
+
+ucstring_ptr domdup(ucstring_cptr dom) {
+  return static_cast<ucstring_ptr>(memdup(dom, domlen(dom)));
+}
+} // namespace dooked

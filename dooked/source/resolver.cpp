@@ -132,7 +132,7 @@ void custom_resolver_socket_t::send_network_request() {
   udp_stream_->async_send_to(
       net::const_buffer(generic_buffer_.data(), generic_buffer_.size()),
       current_resolver_.ep,
-      [](auto const &error_code, auto const) { on_data_sent(error_code); });
+      [this](auto const &error_code, auto const) { on_data_sent(error_code); });
 }
 
 void custom_resolver_socket_t::on_data_sent(
@@ -230,7 +230,9 @@ void custom_resolver_socket_t::parse_dns_body(
 }
 
 dns_body_t custom_resolver_socket_t::parse_dns_body_impl(
-    ucstring::const_pointer body_begin) {}
+    ucstring::const_pointer body_begin) {
+  return dns_body_t{};
+}
 
 void custom_resolver_socket_t::parse_dns_header(dns_packet_t &packet) {
   static constexpr std::size_t const dns_packet_min_size = 17;
@@ -359,6 +361,10 @@ std::uint16_t uint16_value(unsigned char const *buff) {
   return buff[0] * 256 + buff[1];
 }
 
+std::uint32_t uint32_value(unsigned char const *buff) {
+  return uint16_value(buff) * 65'536 + uint16_value(buff + 2);
+}
+
 void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   int const buffer_len = buff.size();
   if (buffer_len < 12) {
@@ -385,6 +391,7 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   int pos = 12;
   /* read question section */
   std::vector<dns_alternate_question_t> questions{};
+  std::vector<dns_alternate_record_t> answers{};
 
   for (int t = 0; t < qdc; t++) {
     if (pos >= buffer_len) {
@@ -406,4 +413,43 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   /* read other sections */
   read_section(answers, adc, buff, pos);
 }
+
+void read_section(std::vector<dns_alternate_record_t> &answers, int count,
+                  ucstring &buf, int &buf_start_position) {
+  while (--count >= 0) {
+    answers.push_back(read_raw_record(buf, buf_start_position));
+  }
+}
+
+dns_alternate_record_t read_raw_record(ucstring &buffer, int &pos) {
+  domainname dom{};
+
+  dns_alternate_record_t rr{};
+  int const buffer_size = buffer.size();
+  if (pos >= buffer_size) {
+    throw general_exception_t("Message too small for RR");
+  }
+  auto x = dom_comprlen(buffer, pos);
+  if (pos + x + 10 > buffer_size) {
+    throw general_exception_t("Message too small for RR");
+  }
+  auto const msg = buffer.data();
+  rr.name = domainname(buffer, pos);
+  rr.type = static_cast<dns_record_type>(uint16_value(msg + pos + x));
+  rr.dns_class_ = uint16_value(msg + pos + x + 2);
+  rr.ttl = uint32_value(msg + pos + x + 4);
+
+  pos += x + 10;
+  x = uint16_value(msg + pos - 2);
+  if (x != 0) {
+    raw_record_read(rr.type, rr.rdata, rr.rd_length, buffer, pos, x);
+  }
+  pos += x;
+
+  return rr;
+}
+
+void raw_record_read(dns_record_type const rtype, ucstring_ptr &rdata,
+                     std::uint16_t &rd_length, ucstring &buffer, int const ix,
+                     int const len) {}
 } // namespace dooked

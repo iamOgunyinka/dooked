@@ -44,7 +44,7 @@ public:
    * \param origin Origin, in binary format, to which relative domain names are
    *               relative
    */
-  domainname(char const *text, ucstring_cptr origin = "");
+  domainname(char const *text, ucstring_cptr origin = (ucstring_cptr) "");
 
   /*!
    * \brief constructor from data in a DNS message
@@ -267,4 +267,5 @@ int txt_to_ipv6(unsigned char ipv6[16], char const *buff,
 void domfromlabel(ucstring_ptr dom, char const *label, int len = -1);
 void txt_to_dname(ucstring_ptr target, char const *src,
                   ucstring_cptr origin = nullptr);
+int domlen(ucstring_cptr dom);
 } // namespace dooked
