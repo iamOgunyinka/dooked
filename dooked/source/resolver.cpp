@@ -359,7 +359,7 @@ std::uint16_t uint16_value(unsigned char const *buff) {
   return buff[0] * 256 + buff[1];
 }
 
-void alternate_parse_dns(dns_packet_t &packet, ucstring const &buff) {
+void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   int const buffer_len = buff.size();
   if (buffer_len < 12) {
     throw invalid_dns_response_t("Corrupted DNS packet: too small for header");
@@ -384,7 +384,7 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring const &buff) {
   int const arc = uint16_value(data + 10);
   int pos = 12;
   /* read question section */
-  std::vector<dns_question_t> questions{};
+  std::vector<dns_alternate_question_t> questions{};
 
   for (int t = 0; t < qdc; t++) {
     if (pos >= buffer_len) {
@@ -394,10 +394,10 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring const &buff) {
     if (pos + x + 4 > buffer_len) {
       throw invalid_dns_response_t("Message too small for question item !");
     }
-    auto const dns_type = uint16_value(data + pos + x);
+    auto const dns_type =
+        static_cast<dns_record_type>(uint16_value(data + pos + x));
     auto const dns_class = uint16_value(data + pos + x + 2);
-    questions.push_back(
-        dns_question_t(domainname(buff, pos), dns_type, dns_class));
+    questions.push_back({domainname(buff, pos), dns_type, dns_class});
 
     pos += x;
     pos += 4;

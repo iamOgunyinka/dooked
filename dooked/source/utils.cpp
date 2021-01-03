@@ -142,7 +142,7 @@ int dom_comprlen(ucstring const &buff, int ix) {
   }
 }
 
-ucstring dom_uncompress(ucstring const &buff, int ix) {
+ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
   int reclevel = 0, len = 0, val = 0;
   auto ptr = buff.data() + ix;
   auto end = buff.data() + buff.size();
@@ -156,7 +156,7 @@ ucstring dom_uncompress(ucstring const &buff, int ix) {
     if (*ptr == 0) {
       /* we're at the end! */
       dbuff[len] = '\0';
-      return dbuff;
+      return domdup(dbuff);
     }
 
     if ((*ptr & 192) == 192) {

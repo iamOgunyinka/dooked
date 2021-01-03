@@ -89,6 +89,8 @@ struct domain_t {
 
 // name aliases
 using ucstring = std::basic_string<unsigned char>;
+using ucstring_cptr = ucstring::const_pointer;
+using ucstring_ptr = ucstring::pointer;
 using a_record_t = ip_address_t;
 using aaaa_record_t = ip_address_t;
 using domain_list_t = synced_queue_t<domain_t>;
@@ -102,5 +104,6 @@ std::string get_file_extension(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
 std::uint16_t uint16_value(unsigned char const *buff);
 int dom_comprlen(ucstring const &, int);
-ucstring dom_uncompress(ucstring const &, int);
+ucstring_ptr dom_uncompress(ucstring const &, int);
+ucstring_ptr domdup(ucstring_cptr);
 } // namespace dooked

@@ -1,4 +1,5 @@
 #pragma once
+#include "domainname.hpp"
 #include "utils.hpp"
 #include <boost/asio/ip/udp.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
@@ -168,6 +169,12 @@ struct dns_header_t {
   uint16_t add_count{};  // additional information count
 };
 
+struct dns_alternate_question_t {
+  domainname dns_name;
+  dns_record_type type;
+  unsigned int dns_class_;
+};
+
 struct dns_question_t {
   ucstring dns_name;
   dns_record_type type;
@@ -253,5 +260,5 @@ public:
 void create_query(std::string const &name, std::uint16_t type, std::uint16_t id,
                   ucstring &bufp);
 
-void alternate_parse_dns(dns_packet_t &, ucstring const &);
+void alternate_parse_dns(dns_packet_t &, ucstring &);
 } // namespace dooked

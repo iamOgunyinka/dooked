@@ -6,8 +6,6 @@ namespace dooked {
 using ucstring = std::basic_string<unsigned char>;
 using ucstring_cptr = ucstring::const_pointer;
 using ucstring_ptr = ucstring::pointer;
-using _domain = ucstring_ptr;
-using _cdomain = ucstring_cptr;
 
 class domainname {
 public:
@@ -21,6 +19,7 @@ public:
     if (domain) {
       free(domain);
     }
+    domain = nullptr;
   }
   /*!
    * \brief constructor from human-readable text
@@ -31,7 +30,7 @@ public:
    * \param text Human-readable domain name
    * \param origin Origin to which relative domain names are relative
    */
-  domainname(const char *text, const domainname &origin);
+  domainname(char const *text, const domainname &origin);
 
   /*!
    * \brief constructor from human-readable text
@@ -45,7 +44,7 @@ public:
    * \param origin Origin, in binary format, to which relative domain names are
    *               relative
    */
-  domainname(const char *text, ucstring_cptr origin = "");
+  domainname(char const *text, ucstring_cptr origin = "");
 
   /*!
    * \brief constructor from data in a DNS message
@@ -116,7 +115,7 @@ public:
    * \param buff The domain name in human-readable text
    * \return The assigned domain name
    */
-  domainname &operator=(const char *buff);
+  domainname &operator=(char const *buff);
 
   /*!
    * \brief concatenation using +=
@@ -163,15 +162,6 @@ public:
   bool operator>(const domainname &dom) const;
 
   /*!
-   * \brief binary representation of domain
-   *
-   * Returns the binary representation of the domain name as it would appear
-   * in DNS messages (though in uncompressed form).
-   * \return Binary representation for the domain name
-   */
-  ucstring_cptr c_str() const;
-
-  /*!
    * \brief length of binary representation
    *
 
@@ -189,7 +179,7 @@ public:
    * \return Human-readable domain name
    * \sa tocstr()
    */
-  ucstring tostring() const;
+  std::string tostring() const;
 
   /*!
    * \brief convert to human-readable character array
@@ -199,7 +189,7 @@ public:
    * use a strdup().
    * \sa tostring()
    */
-  ucstring_cptr cstr() { return tostring().c_str(); }
+  ucstring_cptr cstr() const;
   /*!
    * \brief number of labels of the domain name
    *
@@ -219,7 +209,7 @@ public:
    * \return The label at the specified index
    * \sa nlabels()
    */
-  ucstring label(int ix) const;
+  std::string label(int ix) const;
 
   /*!
    * \brief domain-name portion
@@ -253,7 +243,7 @@ public:
    * \return Relative string representation
    * \sa tostring()
    */
-  ucstring to_rel_string(const domainname &root) const;
+  std::string to_rel_string(const domainname &root) const;
 
   /*!
    * \brief check label match count
@@ -274,6 +264,7 @@ private:
 int txt_to_ip(unsigned char ip[4], char const *, bool do_portion = false);
 int txt_to_ipv6(unsigned char ipv6[16], char const *buff,
                 bool do_portion = false);
-void domfromlabel(_domain dom, const char *label, int len = -1);
-
+void domfromlabel(ucstring_ptr dom, char const *label, int len = -1);
+void txt_to_dname(ucstring_ptr target, char const *src,
+                  ucstring_cptr origin = nullptr);
 } // namespace dooked

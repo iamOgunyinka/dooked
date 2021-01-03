@@ -4,12 +4,13 @@
 namespace dooked {
 constexpr int const domain_len = 0xFF;
 constexpr int const domlabel_len = 63;
+char incr_mask[8] = {0, 128, 192, 224, 240, 248, 252, 254};
 
 template <typename T> constexpr auto hexfromint(T hex) {
   return (((hex) < 10) ? (hex) + '0' : ((hex)-10) + 'a');
 }
 
-void domcat(_domain res, _cdomain src) {
+void domcat(ucstring_ptr res, ucstring_cptr src) {
   int lenres = domlen(res), lensrc = domlen(src);
   if (lenres + lensrc - 1 > domain_len) {
     throw general_exception_t("Domain name too long");
@@ -17,7 +18,7 @@ void domcat(_domain res, _cdomain src) {
   memcpy(res + lenres - 1, src, lensrc);
 }
 
-void domfromlabel(_domain dom, const char *label, int len) {
+void domfromlabel(ucstring_ptr dom, char const *label, int len) {
   if (len == -1) {
     len = strlen(label);
   }
@@ -30,7 +31,7 @@ void domfromlabel(_domain dom, const char *label, int len) {
   dom[len + 1] = '\0';
 }
 
-int txt_to_ip(unsigned char ip[4], const char *_buff, bool do_portion) {
+int txt_to_ip(unsigned char ip[4], char const *_buff, bool do_portion) {
   char *buff = (char *)_buff;
   int p = 0, tmp = 0, node = 0;
   if (strcmpi(buff, "any") == 0) {
@@ -72,8 +73,9 @@ int txt_to_ip(unsigned char ip[4], const char *_buff, bool do_portion) {
       if (buff[p] == '.') {
         if (buff[p + 1] == '.') {
           throw general_exception_t("Expecting some value after dot");
-        } else if (buff[p + 1] == '\0')
+        } else if (buff[p + 1] == '\0') {
           break;
+        }
         if (tmp >= 3) {
           throw general_exception_t("More than three dots in IP number");
         }
@@ -92,8 +94,6 @@ int txt_to_ip(unsigned char ip[4], const char *_buff, bool do_portion) {
   return tmp;
 }
 
-char incr_mask[8] = {0, 128, 192, 224, 240, 248, 252, 254};
-
 int domlen(ucstring_cptr dom) {
   int len = 1;
   while (*dom) {
@@ -111,7 +111,7 @@ int domlen(ucstring_cptr dom) {
 
 /* converts a buffer to a long numeric value, with postfix (e.g. 68K->68*1024)
  * support */
-int txt_to_int_internal(const char *_buff, bool support_negative) {
+int txt_to_int_internal(char const *_buff, bool support_negative) {
   char *buff = (char *)_buff;
   int val = 0, tmpval = 0;
   bool neg = false;
@@ -166,9 +166,9 @@ int txt_to_int_internal(const char *_buff, bool support_negative) {
   }
 }
 
-int txt_to_negint(const char *buff) { return txt_to_int_internal(buff, true); }
+int txt_to_negint(char const *buff) { return txt_to_int_internal(buff, true); }
 
-int txt_to_int(const char *buff) { return txt_to_int_internal(buff, false); }
+int txt_to_int(char const *buff) { return txt_to_int_internal(buff, false); }
 
 int hextoint(char val) {
   if (val >= '0' && val <= '9') {
@@ -182,7 +182,7 @@ int hextoint(char val) {
 }
 
 /* converts a buffer to a 128-bit ipv6 number */
-int txt_to_ipv6(unsigned char ipv6[16], const char *buff, bool do_portion) {
+int txt_to_ipv6(unsigned char ipv6[16], char const *buff, bool do_portion) {
   int multigroup_pos = -1;
   int pos = -1;
   int node = 0;      /* the pair we're working on */
@@ -284,7 +284,7 @@ int txt_to_ipv6(unsigned char ipv6[16], const char *buff, bool do_portion) {
   return 16;
 }
 
-void txt_to_ip6range(unsigned char *iprange, const char *val) {
+void txt_to_ip6range(unsigned char *iprange, char const *val) {
   char buff[128];
   char *ptr;
   int x, z;
@@ -332,19 +332,17 @@ bool ip6range_matches(const unsigned char *iprange, const unsigned char *ip) {
   return true;
 }
 
-void txt_to_dname(_domain target, const char *src, ucstring const &origin) {
-  char *ptr;
+void txt_to_dname(ucstring_ptr target, char const *src, ucstring_cptr origin) {
   unsigned char label[domain_len];
-  unsigned char tmp[16];
-  char hex;
-  int ttmp, ret;
+  unsigned char tmp[16]{};
+  int ttmp{}, ret{};
 
   if (src[0] == '@' && src[1] == '\0') {
     /* nothing but the origin */
-    if (origin.empty()) {
+    if (!origin) {
       target[0] = '\0';
     } else {
-      memcpy(target, origin.data(), domlen(origin.data()));
+      memcpy(target, origin, domlen(origin));
     }
     return;
   }
@@ -363,12 +361,12 @@ void txt_to_dname(_domain target, const char *src, ucstring const &origin) {
         }
         ret = txt_to_ipv6(tmp, src + 1, true);
         for (ttmp = ret - 1; ttmp >= 0; ttmp--) {
-          hex = hexfromint(tmp[ttmp] & 15);
+          char hex = hexfromint(tmp[ttmp] & 15);
           domfromlabel(target + domlen(target) - 1, &hex, 1);
           hex = hexfromint(tmp[ttmp] / 16);
           domfromlabel(target + domlen(target) - 1, &hex, 1);
         }
-        domcat(target, (_domain) "\3ip6\3int");
+        domcat(target, (ucstring_ptr) "\3ip6\3int");
         return;
       } else {
         /* ipv4 */
@@ -380,12 +378,12 @@ void txt_to_dname(_domain target, const char *src, ucstring const &origin) {
           sprintf((char *)tmp + 4, "%d", tmp[ttmp]);
           domfromlabel(target + domlen(target) - 1, (char *)tmp + 4);
         }
-        domcat(target, (_domain) "\7in-addr\4arpa");
+        domcat(target, (ucstring_ptr) "\7in-addr\4arpa");
         return;
       }
     }
 
-    ptr = (char *)strchr(src, '.');
+    auto ptr = (char *)strchr(src, '.');
     if (ptr) {
       if (ptr == src) {
         throw general_exception_t("Zero length label");
@@ -398,20 +396,19 @@ void txt_to_dname(_domain target, const char *src, ucstring const &origin) {
       domfromlabel(label, src);
       domcat(target, label);
       if (origin) {
-        domcat(target, (_domain)origin);
+        domcat(target, (ucstring_ptr)origin);
       }
       return;
     }
   }
 }
 
-void txt_to_email(ucstring_ptr target, const char *src,
-                  ucstring const &origin) {
+void txt_to_email(ucstring_ptr target, char const *src,
+                  ucstring_cptr const &origin) {
   unsigned char dom[0xFF];
-  char *cptr;
 
-  if ((cptr = (char *)strchr(src, '@')) != NULL &&
-      !(cptr[0] == '@' && cptr[1] == 0)) {
+  if (auto cptr = (char *)strchr(src, '@');
+      cptr != nullptr && !(cptr[0] == '@' && cptr[1] == 0)) {
     /* contains a '@', so assume it's an email address */
     if (src[0] == '@') {
       throw invalid_dns_response_t(
@@ -426,35 +423,182 @@ void txt_to_email(ucstring_ptr target, const char *src,
   }
 }
 
-domainname::domainname() : domain{nullptr} {}
+void *memdup(const void *src, int len) {
+  if (len == 0) {
+    return nullptr;
+  }
+  void *ret = malloc(len);
+  memcpy(ret, src, len);
+  return ret;
+}
+
+ucstring_ptr domdup(ucstring_cptr dom) {
+  return static_cast<ucstring_ptr>(memdup(dom, domlen(dom)));
+}
+
+ucstring_ptr dom_plabel(ucstring_cptr dom, int label) {
+  auto ret = dom;
+  if (label < 0) {
+    throw general_exception_t("Negative label accessed");
+  }
+  while (label--) {
+    if (*ret == 0) {
+      throw ucstring_ptr("Label not in domain name");
+    }
+    ret += *ret + 1;
+  }
+  return const_cast<ucstring_ptr>(ret);
+}
+
+void domto(ucstring_ptr ret, ucstring_ptr src, int labels) {
+  ucstring_ptr ptr = dom_plabel(src, labels);
+  memcpy(ret, src, ptr - src);
+  ret[ptr - src] = '\0';
+}
+
+bool domcmp(ucstring_cptr _dom1, ucstring_cptr _dom2) {
+  auto dom1 = _dom1;
+  auto dom2 = _dom2;
+  if (*dom1 != *dom2) {
+    return false;
+  }
+
+  int const x = domlen(dom1);
+  int const y = domlen(dom2);
+  if (x != y) {
+    return false;
+  }
+
+  while (*dom1) {
+    if (*dom1 != *dom2) {
+      return false;
+    }
+    for (int t = 1; t <= *dom1; t++) {
+      if (tolower(dom1[t]) != tolower(dom2[t])) {
+        return false;
+      }
+    }
+    dom1 += *dom1 + 1;
+    dom2 += *dom2 + 1;
+  }
+
+  return true;
+}
+
+bool domisparent(ucstring_cptr parent, ucstring_cptr child) {
+  int const x = domlen(parent);
+  int const y = domlen(child);
+  if (x > y) {
+    return false;
+  }
+  return domcmp(parent, child + y - x);
+}
+
+std::string dom_tostring(ucstring_cptr dom) {
+  if (*dom == '\0') {
+    return ".";
+  }
+
+  std::string x{};
+  while (*dom != '\0') {
+    x.append((char *)dom + 1, (int)*dom);
+    x.append(".");
+
+    dom += *dom + 1;
+  }
+
+  return x;
+}
+int dom_nlabels(ucstring_cptr dom) {
+  int n_labels = 1;
+  while (*dom) {
+    dom += *dom + 1;
+    n_labels++;
+  }
+  return n_labels;
+}
+
+std::string dom_label(ucstring_cptr dom, int label) {
+  std::string ret{};
+  while (label > 0) {
+    if (*dom == 0) {
+      return "";
+    }
+    dom += *dom + 1;
+    label--;
+  }
+
+  ret.append((char *)dom + 1, (int)*dom);
+  return ret;
+}
+
+bool domlcmp(ucstring_cptr dom1, ucstring_cptr dom2) {
+  auto a = dom1;
+  auto b = dom2;
+  if (*a != *b) {
+    return false;
+  }
+  for (int t = 1; t <= *a; t++) {
+    if (tolower(a[t]) != tolower(b[t])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int domncommon(ucstring_cptr _dom1, ucstring_cptr _dom2) {
+  ucstring_ptr dom1 = (ucstring_ptr)_dom1, dom2 = (ucstring_ptr)_dom2;
+
+  int a = dom_nlabels(dom1), b = dom_nlabels(dom2);
+  if (a > b) {
+    dom1 = dom_plabel(dom1, a - b);
+  } else {
+    dom2 = dom_plabel(dom2, b - a);
+  }
+  int x = 0;
+  while (*dom1) {
+    if (domlcmp(dom1, dom2)) {
+      x++;
+    } else {
+      x = 0;
+    }
+    dom1 += *dom1 + 1;
+    dom2 += *dom2 + 1;
+  }
+  return x;
+}
+
+domainname::domainname() : domain{(unsigned char *)strdup("")} {}
 
 domainname::domainname(char const *string, domainname const &origin) {
   unsigned char tmp[0xFF];
 
   txt_to_email(tmp, string, origin.domain);
-  domain = tmp;
+  domain = domdup(tmp);
 }
 
 domainname::domainname(char const *string, ucstring_cptr origin) {
   unsigned char tmp[0xFF];
 
   txt_to_email(tmp, string, origin);
-  domain = tmp;
+  domain = domdup(tmp);
 }
 
 domainname::domainname(ucstring &buff, int ix) {
   domain = dom_uncompress(buff, ix);
 }
 
-domainname::domainname(bool val, ucstring_cptr dom) : domain{dom} {}
+domainname::domainname(bool val, ucstring_cptr dom) : domain{domdup(dom)} {}
 
-domainname::domainname(const domainname &nam) { domain = domdup(nam.domain); }
+domainname::domainname(const domainname &nam) : domain{domdup(nam.domain)} {}
 
 domainname &domainname::operator=(domainname const &nam) {
   if (this != &nam) {
-    domain = nam.domain;
+    if (domain) {
+      free(domain);
+    }
+    domain = domdup(nam.domain);
   }
-
   return *this;
 }
 
@@ -475,8 +619,8 @@ bool domainname::operator!=(const domainname &nam) const {
 }
 
 domainname &domainname::operator+=(const domainname &nam) {
-  int const lenres = domlen(domain.data());
-  int const lensrc = domlen(nam.domain.data());
+  int const lenres = domlen(domain);
+  int const lensrc = domlen(nam.domain);
 
   if (lenres + lensrc - 1 > 0xFF) {
     throw general_exception_t("Domain name too long");
@@ -500,26 +644,27 @@ bool domainname::operator>(const domainname &dom) const {
   return !domcmp(dom.domain, domain) && domisparent(dom.domain, domain);
 }
 
-_domain domainname::c_str() const {
-  if (domain == NULL)
-    throw PException("Domain name is empty");
+ucstring_cptr domainname::cstr() const {
+  if (!domain) {
+    throw general_exception_t("Domain name is empty");
+  }
   return domain;
 }
 
 int domainname::len() const { return domlen(domain); }
 
-stl_string domainname::tostring() const { return dom_tostring(domain); }
+std::string domainname::tostring() const { return dom_tostring(domain); }
 
 int domainname::nlabels() const { return dom_nlabels(domain); }
 
-stl_string domainname::label(int ix) const { return dom_label(domain, ix); }
+std::string domainname::label(int ix) const { return dom_label(domain, ix); }
 
 domainname domainname::from(int ix) const {
-  stl_string ret;
-  unsigned char *dom = domain;
+  auto dom = domain;
   while (ix > 0) {
-    if (*dom == 0)
-      throw PException("Domain label index out of bounds");
+    if (*dom == 0) {
+      throw general_exception_t("Domain label index out of bounds");
+    }
     dom += *dom + 1;
     ix--;
   }
@@ -532,11 +677,11 @@ domainname domainname::to(int labels) const {
   return domainname(true, ptr);
 }
 
-ucstring domainname::to_rel_string(const domainname &root) const {
+std::string domainname::to_rel_string(const domainname &root) const {
   if (*this == root) {
     return "@";
   } else if (*this >= root) {
-    ucstring str = to(nlabels() - root.nlabels()).tostring();
+    auto str = to(nlabels() - root.nlabels()).tostring();
     str.resize(str.size() - 1);
     return str;
   }
