@@ -108,4 +108,5 @@ std::uint16_t uint16_value(unsigned char const *buff);
 int dom_comprlen(ucstring const &, int);
 ucstring_ptr dom_uncompress(ucstring const &, int);
 ucstring_ptr domdup(ucstring_cptr);
+void *memdup(void const *src, int len);
 } // namespace dooked

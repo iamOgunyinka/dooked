@@ -39,15 +39,6 @@ TEST_CASE("Testing the readability of files", "[utils.hpp]") {
 }
 
 namespace dooked {
-void *memdup(const void *src, int len) {
-  if (len == 0) {
-    return nullptr;
-  }
-  void *ret = malloc(len);
-  memcpy(ret, src, len);
-  return ret;
-}
-
 using ucstring_ptr = unsigned char *;
 using ucstring_cptr = unsigned char const *;
 

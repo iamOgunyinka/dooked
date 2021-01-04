@@ -2,12 +2,32 @@
 
 namespace dooked {
 
-std::array<dns_record_type, 7> const
-    dns_supported_record_type_t::supported_types{
-        dns_record_type::DNS_REC_SOA,  dns_record_type::DNS_REC_A,
-        dns_record_type::DNS_REC_AAAA, dns_record_type::DNS_REC_CNAME,
-        dns_record_type::DNS_REC_MX,   dns_record_type::DNS_REC_NS,
-        dns_record_type::DNS_REC_TXT};
+std::array<rr_type_t, 13> const dns_supported_record_type_t::supported_types{
+    rr_type_t{"A", 1, "i", rr_flags_e::R_NONE, dns_record_type_e::DNS_REC_A},
+    rr_type_t{"NS", 2, "d", rr_flags_e::R_ASPCOMPRESS,
+              dns_record_type_e::DNS_REC_NS},
+    rr_type_t{"CNAME", 5, "d", rr_flags_e::R_COMPRESS,
+              dns_record_type_e::DNS_REC_CNAME},
+    rr_type_t{"SOA", 6, "dmltttt", rr_flags_e::R_COMPRESS,
+              dns_record_type_e::DNS_REC_SOA},
+    rr_type_t{"PTR", 12, "d", rr_flags_e::R_COMPRESS,
+              dns_record_type_e::DNS_REC_PTR},
+    rr_type_t{"MX", 15, "sd", rr_flags_e::R_ASPCOMPRESS,
+              dns_record_type_e::DNS_REC_MX},
+    rr_type_t{"TXT", 16, "h", rr_flags_e::R_NONE,
+              dns_record_type_e::DNS_REC_TXT},
+    rr_type_t{"AFSDB", 18, "sd", rr_flags_e::R_ASP,
+              dns_record_type_e::DNS_REC_AFSDB},
+    rr_type_t{"AAAA", 28, "6", rr_flags_e::R_NONE,
+              dns_record_type_e::DNS_REC_AAAA},
+    rr_type_t{"LOC", 29, "o", rr_flags_e::R_NONE,
+              dns_record_type_e::DNS_REC_LOC},
+    rr_type_t{"SRV", 33, "sssd", rr_flags_e::R_ASP,
+              dns_record_type_e::DNS_REC_SRV},
+    rr_type_t{"NAPTR", 35, "sscccd", rr_flags_e::R_NONE,
+              dns_record_type_e::DNS_REC_NAPTR},
+    rr_type_t{"DNAME", 39, "d", rr_flags_e::R_ASP,
+              dns_record_type_e::DNS_REC_DNAME}};
 
 void set_dns_header_value(ucstring::value_type *q, std::uint16_t id) {
   set_qid(q, id);
@@ -110,7 +130,7 @@ void custom_resolver_socket_t::start() { send_next_request(); }
 void custom_resolver_socket_t::send_next_request() {
   try {
     current_rec_type_ = next_record_type();
-    if (current_rec_type_ == dns_record_type::DNS_REC_UNDEFINED) {
+    if (current_rec_type_ == dns_record_type_e::DNS_REC_UNDEFINED) {
       name_ = names_.next_item();
       current_rec_type_ = next_record_type();
     }
@@ -189,7 +209,9 @@ void custom_resolver_socket_t::on_data_received() {
   generic_buffer_.resize(bytes_read_);
   bytes_read_ = 0;
   dns_packet_t packet{};
-  parse_dns_response(packet);
+  // parse_dns_response(packet);
+  alternate_parse_dns(packet, generic_buffer_);
+  serialize_packet(packet);
 }
 
 void custom_resolver_socket_t::establish_udp_connection() {
@@ -200,17 +222,17 @@ void custom_resolver_socket_t::establish_udp_connection() {
   return send_network_request();
 }
 
-dns_record_type custom_resolver_socket_t::next_record_type() {
+dns_record_type_e custom_resolver_socket_t::next_record_type() {
   auto &supported_types = dns_supported_record_type_t::supported_types;
   if (supported_dns_record_size_ == -1) {
-    return supported_types[++last_processed_dns_index_];
+    return supported_types[++last_processed_dns_index_].rr_type_name;
   }
   // special case: done with current name, retrieve next one.
   if (last_processed_dns_index_ >= supported_dns_record_size_) {
     last_processed_dns_index_ = -1;
-    return dns_record_type::DNS_REC_UNDEFINED;
+    return dns_record_type_e::DNS_REC_UNDEFINED;
   }
-  return supported_types[++last_processed_dns_index_];
+  return supported_types[++last_processed_dns_index_].rr_type_name;
 }
 
 void custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet) {
@@ -280,7 +302,7 @@ custom_resolver_socket_t::parse_dns_question(dns_packet_t &packet) {
   }
 
   auto &head = packet.head;
-  head.question.type = (dns_record_type)ntohs((*(uint16_t *)body_begin));
+  head.question.type = (dns_record_type_e)ntohs((*(uint16_t *)body_begin));
   head.question.dns_class_ = ntohs((*(uint16_t *)(body_begin + 2)));
   if (body_begin) {
     body_begin = body_begin + 4;
@@ -402,7 +424,7 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
       throw invalid_dns_response_t("Message too small for question item !");
     }
     auto const dns_type =
-        static_cast<dns_record_type>(uint16_value(data + pos + x));
+        static_cast<dns_record_type_e>(uint16_value(data + pos + x));
     auto const dns_class = uint16_value(data + pos + x + 2);
     questions.push_back({domainname(buff, pos), dns_type, dns_class});
 
@@ -412,6 +434,7 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
 
   /* read other sections */
   read_section(answers, adc, buff, pos);
+  packet.body.answers = std::move(answers);
 }
 
 void read_section(std::vector<dns_alternate_record_t> &answers, int count,
@@ -435,7 +458,7 @@ dns_alternate_record_t read_raw_record(ucstring &buffer, int &pos) {
   }
   auto const msg = buffer.data();
   rr.name = domainname(buffer, pos);
-  rr.type = static_cast<dns_record_type>(uint16_value(msg + pos + x));
+  rr.type = static_cast<dns_record_type_e>(uint16_value(msg + pos + x));
   rr.dns_class_ = uint16_value(msg + pos + x + 2);
   rr.ttl = uint32_value(msg + pos + x + 4);
 
@@ -449,7 +472,124 @@ dns_alternate_record_t read_raw_record(ucstring &buffer, int &pos) {
   return rr;
 }
 
-void raw_record_read(dns_record_type const rtype, ucstring_ptr &rdata,
-                     std::uint16_t &rd_length, ucstring &buffer, int const ix,
-                     int const len) {}
+std::optional<rr_type_t> get_rrtype_info(dns_record_type_e type) {
+  auto &stypes = dns_supported_record_type_t::supported_types;
+  auto iter = std::find_if(
+      stypes.cbegin(), stypes.cend(),
+      [type](rr_type_t const &rtype) { return rtype.rr_type_name == type; });
+  if (iter == stypes.cend()) {
+    return std::nullopt;
+  }
+  return *iter;
+}
+
+int rr_len(char const prop, ucstring &buffer, int ix, int len) {
+  auto const msg_rbuffer = buffer.data();
+
+  switch (prop) {
+  case 'd': /* a domain name */
+  case 'm': /* email address */
+    return dom_comprlen(buffer, ix);
+  case 'i': /* ipv4 number */
+  case 'l': /* 32-bit number */
+  case 't':
+    return 4;
+  case 's': /* 16-bit number */
+    return 2;
+  case 'c': /* character string */
+    return msg_rbuffer[ix] + 1;
+  case 'h': // character strings */
+  {
+    auto ptr = msg_rbuffer + ix;
+    while (ptr - msg_rbuffer - ix < len) {
+      ptr += *ptr + 1;
+    }
+    if (ptr != msg_rbuffer + ix + len) {
+      throw general_exception_t("Character strings too long for RR");
+    }
+    return len;
+  }
+  case 'n': /* NULL rdata */
+    return len;
+  case 'w': /* well-known services */
+    if (len < 5) {
+      throw general_exception_t("WKS RR too long for RR");
+    }
+    return len;
+  case '6': /* ipv6 address */
+    return 16;
+  case '7': // ipv6 address + prefix
+  {
+    int x = ((135 - msg_rbuffer[ix]) / 8); /* prefix length in bytes */
+    if (ix + x + 1 >= len) {
+      throw general_exception_t("A6 too long for RR");
+    }
+    if (msg_rbuffer[ix] != 0)
+      /* domain name nessecary */
+      x += dom_comprlen(buffer, ix + x + 1);
+    return x + 1;
+  }
+  case 'o': /* DNS LOC */
+    if (msg_rbuffer[ix] != 0) {
+      throw general_exception_t("Unsupported LOC version");
+    }
+    return 16;
+  }
+  throw general_exception_t("Unknown RR item type " + std::string(1, prop));
+}
+
+void raw_record_read(dns_record_type_e const rtype, ucstring_ptr &rdata,
+                     std::uint16_t &rd_length, ucstring &buffer, int ix,
+                     int len) {
+  auto const info = get_rrtype_info(rtype);
+  char const *ptr = nullptr;
+  std::string res;
+  int x{};
+  ucstring_ptr dom{};
+  auto const message_rbuffer = buffer.data();
+
+  if (ix + len > buffer.size()) {
+    throw general_exception_t("RR doesn't fit in DNS message");
+  }
+  if (info) {
+    /* we support the RR type */
+    try {
+      ptr = info->properties;
+      while (*ptr) {
+        x = rr_len(*ptr, buffer, ix, len);
+        if (x > len) {
+          throw general_exception_t("RR item too long!");
+        }
+        if (*ptr == 'd' || *ptr == 'm') {
+          /* domain name: needs to be decompressed */
+          dom = dom_uncompress(buffer, ix);
+          res.append((char *)dom, domlen(dom));
+          free(dom);
+        } else {
+          res.append((char *)message_rbuffer + ix, x);
+        }
+
+        ix += x;
+        len -= x;
+
+        ptr++;
+      }
+      if (len != 0) {
+        throw general_exception_t("extra data in RR");
+      }
+    } catch (general_exception_t const &p) {
+      throw general_exception_t(std::string("Parsing RR failed: ") + p.what());
+    }
+    if (len != 0) {
+      throw general_exception_t("RR length too long");
+    }
+  } else {
+    /* we do not support the RR type: just copy it altogether */
+    res.append((char *)message_rbuffer + ix, len);
+  }
+  rd_length = res.length();
+  rdata = (unsigned char *)memdup((void *)res.c_str(), res.length());
+}
+
+void serialize_packet(dns_packet_t const &packet) {}
 } // namespace dooked

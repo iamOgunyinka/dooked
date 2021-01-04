@@ -69,7 +69,7 @@ template <typename T, typename U> auto maximum(T const &t, U const &u) {
   return t < u ? u : t;
 }
 
-enum class dns_record_type : std::uint16_t {
+enum class dns_record_type_e : std::uint16_t {
   DNS_REC_INVALID = 0xFFFF, // Error code
   DNS_REC_UNDEFINED = 0,
   DNS_REC_A = 1,
@@ -171,13 +171,13 @@ struct dns_header_t {
 
 struct dns_alternate_question_t {
   domainname dns_name;
-  dns_record_type type;
+  dns_record_type_e type;
   unsigned int dns_class_;
 };
 
 struct dns_question_t {
   ucstring dns_name;
-  dns_record_type type;
+  dns_record_type_e type;
   unsigned int dns_class_;
 };
 
@@ -187,27 +187,27 @@ struct dns_head_t {
 };
 
 struct dns_record_t {
-  std::string rr_name{}; // Resource Record(RR) name
-  dns_record_type type;  // RR TYPE (2 octets)
-  uint16_t dns_class_{}; // RR CLASS codes(2 octets)
-  uint16_t length{};     // length in octets of the RDATA field.
-  uint32_t ttl{};        // time to live(4 octets)
+  std::string rr_name{};  // Resource Record(RR) name
+  dns_record_type_e type; // RR TYPE (2 octets)
+  uint16_t dns_class_{};  // RR CLASS codes(2 octets)
+  uint16_t length{};      // length in octets of the RDATA field.
+  uint32_t ttl{};         // time to live(4 octets)
   std::variant<net::ip::address, ucstring> rdata{};
 };
 
 struct dns_alternate_record_t {
   domainname name{};
-  dns_record_type type;  // RR TYPE (2 octets)
-  uint16_t dns_class_{}; // RR CLASS codes(2 octets)
-  uint16_t rd_length{};  // length in octets of the RDATA field.
-  uint32_t ttl{};        // time to live(4 octets)
+  dns_record_type_e type; // RR TYPE (2 octets)
+  uint16_t dns_class_{};  // RR CLASS codes(2 octets)
+  uint16_t rd_length{};   // length in octets of the RDATA field.
+  uint32_t ttl{};         // time to live(4 octets)
   ucstring_ptr rdata{};
 };
 
 struct dns_body_t {
-  std::vector<dns_record_t> answers{};
-  std::vector<dns_record_t> authorities{};
-  std::vector<dns_record_t> additional_info{};
+  std::vector<dns_alternate_record_t> answers{};
+  //  std::vector<dns_record_t> authorities{};
+  //  std::vector<dns_record_t> additional_info{};
 };
 
 struct dns_packet_t {
@@ -215,8 +215,23 @@ struct dns_packet_t {
   dns_body_t body;
 };
 
+enum class rr_flags_e {
+  R_NONE = 0,
+  R_ASP = 1,
+  R_COMPRESS = 2,
+  R_ASPCOMPRESS = 3
+};
+
+struct rr_type_t {
+  char name[9]{};
+  std::uint16_t type{};
+  char properties[9]{};
+  rr_flags_e flags = rr_flags_e::R_NONE;
+  dns_record_type_e rr_type_name;
+};
+
 struct dns_supported_record_type_t {
-  static std::array<dns_record_type, 7> const supported_types;
+  static std::array<rr_type_t, 13> const supported_types;
 };
 
 struct resolver_address_t {
@@ -236,7 +251,7 @@ class custom_resolver_socket_t {
 
 private:
   domain_t name_{};
-  dns_record_type current_rec_type_ = dns_record_type::DNS_REC_UNDEFINED;
+  dns_record_type_e current_rec_type_ = dns_record_type_e::DNS_REC_UNDEFINED;
   int last_processed_dns_index_ = -1;
   int const supported_dns_record_size_;
   static constexpr int const max_ops_waiting_ = 2;
@@ -247,7 +262,7 @@ private:
   ucstring generic_buffer_{};
 
 private:
-  dns_record_type next_record_type();
+  dns_record_type_e next_record_type();
   void send_network_request();
   void receive_network_data();
   void establish_udp_connection();
@@ -274,6 +289,7 @@ void read_section(std::vector<dns_alternate_record_t> &, int, ucstring &,
                   int &);
 std::uint32_t uint32_value(unsigned char const *buff);
 dns_alternate_record_t read_raw_record(ucstring &buf, int &pos);
-void raw_record_read(dns_record_type, ucstring_ptr &, std::uint16_t &, ucstring &, int,
-                     int);
+void raw_record_read(dns_record_type_e, ucstring_ptr &, std::uint16_t &,
+                     ucstring &, int, int);
+void serialize_packet(dns_packet_t const &);
 } // namespace dooked

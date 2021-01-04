@@ -110,7 +110,6 @@ std::uint16_t get_random_integer() {
 
 int dom_comprlen(ucstring const &buff, int ix) {
   int len = 0;
-  unsigned char x;
   auto ptr = buff.data() + ix;
   auto end = buff.data() + buff.size();
 
@@ -130,7 +129,7 @@ int dom_comprlen(ucstring const &buff, int ix) {
       }
       return len + 2;
     }
-    x = *ptr & 192;
+    unsigned char x = *ptr & 192;
     if (x != 0) {
       throw invalid_dns_response_t("Unknown domain label type");
     }
@@ -143,7 +142,7 @@ int dom_comprlen(ucstring const &buff, int ix) {
 }
 
 ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
-  int reclevel = 0, len = 0, val = 0;
+  int reclevel = 0, len = 0;
   auto ptr = buff.data() + ix;
   auto end = buff.data() + buff.size();
   unsigned char dbuff[255];
@@ -167,7 +166,7 @@ ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
         throw invalid_dns_response_t(
             "Compression offset exceeds message borders");
       }
-      val = (ptr[0] & 63) * 256 + ptr[1];
+      int const val = (ptr[0] & 63) * 256 + ptr[1];
       if (val >= (ptr - buff.data())) {
         throw invalid_dns_response_t("Bad compression offset");
       }
@@ -191,5 +190,4 @@ ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
 
   //  return domdup(dbuff);
 }
-
 } // namespace dooked
