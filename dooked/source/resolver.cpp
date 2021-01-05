@@ -209,9 +209,12 @@ void custom_resolver_socket_t::on_data_received() {
   generic_buffer_.resize(bytes_read_);
   bytes_read_ = 0;
   dns_packet_t packet{};
-  // parse_dns_response(packet);
-  alternate_parse_dns(packet, generic_buffer_);
-  serialize_packet(packet);
+  try {
+    alternate_parse_dns(packet, generic_buffer_);
+    serialize_packet(packet);
+  } catch (std::exception const &) {
+  }
+  send_next_request();
 }
 
 void custom_resolver_socket_t::establish_udp_connection() {
@@ -233,150 +236,6 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
     return dns_record_type_e::DNS_REC_UNDEFINED;
   }
   return supported_types[++last_processed_dns_index_].rr_type_name;
-}
-
-void custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet) {
-  parse_dns_header(packet);
-  parse_dns_question(packet);
-  auto &header = packet.head.header;
-
-  if (header.id != query_id_ || header.rcode != 0 || header.rd != 1 ||
-      !header.ans_count) {
-    return send_next_request();
-  }
-}
-
-void custom_resolver_socket_t::parse_dns_body(
-    dns_packet_t &packet, ucstring::const_pointer body_begin) {
-  packet.body = parse_dns_body_impl(body_begin);
-}
-
-dns_body_t custom_resolver_socket_t::parse_dns_body_impl(
-    ucstring::const_pointer body_begin) {
-  return dns_body_t{};
-}
-
-void custom_resolver_socket_t::parse_dns_header(dns_packet_t &packet) {
-  static constexpr std::size_t const dns_packet_min_size = 17;
-  bool name_parsed{};
-  uint8_t *qname_end{};
-  auto &response_buffer = generic_buffer_;
-
-  if (response_buffer.size() < dns_packet_min_size) {
-    throw invalid_dns_response_t();
-  }
-
-  auto const buf = response_buffer.c_str();
-  auto &head = packet.head;
-  head.header.id = ntohs((*(uint16_t *)buf));
-  head.header.qr = (bool)(buf[2] & 0x80);
-  head.header.opcode = (uint8_t)((buf[2] & (0x78)) >> 3);
-  head.header.aa = (bool)(buf[2] & 0x04);
-  head.header.tc = (bool)(buf[2] & 0x02);
-  head.header.rd = (bool)(buf[2] & 0x01);
-  head.header.ra = (bool)(buf[3] & 0x80);
-  head.header.z = (bool)(buf[4] & 0x40);
-  head.header.ad = (bool)(buf[3] & 0x20);
-  head.header.cd = (bool)(buf[3] & 0x10);
-  head.header.rcode = (uint8_t)(buf[3] & 0x0F);
-  head.header.ans_count = ntohs((*(uint16_t *)(buf + 6)));
-  head.header.auth_count = ntohs((*(uint16_t *)(buf + 8)));
-  head.header.add_count = ntohs((*(uint16_t *)(buf + 10)));
-  head.header.q_count = ntohs((*(uint16_t *)(buf + 4)));
-
-  if (head.header.q_count != 1) {
-    throw invalid_dns_response_t{"question count more than one"};
-  }
-}
-
-ucstring::const_pointer
-custom_resolver_socket_t::parse_dns_question(dns_packet_t &packet) {
-  auto &question = packet.head.question;
-  auto &response_buffer = generic_buffer_;
-  auto body_begin = parse_dns_qname(packet, 12);
-  auto const response_buffer_end =
-      response_buffer.data() + response_buffer.size();
-  if (body_begin == response_buffer_end ||
-      body_begin + 2 > response_buffer_end) {
-    throw invalid_dns_response_t{"abrupt end of response"};
-  }
-
-  auto &head = packet.head;
-  head.question.type = (dns_record_type_e)ntohs((*(uint16_t *)body_begin));
-  head.question.dns_class_ = ntohs((*(uint16_t *)(body_begin + 2)));
-  if (body_begin) {
-    body_begin = body_begin + 4;
-  }
-  return body_begin;
-}
-
-ucstring::const_pointer custom_resolver_socket_t::parse_dns_qname(
-    dns_packet_t &packet, ucstring::size_type const question_start_index) {
-  auto &qname = packet.head.question.dns_name;
-  qname.resize(0xFF);
-  uint8_t const *pointer{nullptr};
-  auto &response_buffer = generic_buffer_;
-  ucstring::pointer name = qname.data();
-  ucstring::const_pointer *next = nullptr;
-  ucstring::const_pointer begin = response_buffer.data();
-  ucstring::const_pointer buf = response_buffer.data() + question_start_index;
-  ucstring::const_pointer end = response_buffer.data() + response_buffer.size();
-
-  ucstring::value_type first{};
-  int label_len{};
-  int name_len{};
-
-  while (true) {
-    if (buf >= end) {
-      return end;
-    }
-    first = *buf;
-    int const label_type = (first & 0xC0);
-    if (label_type == 0xC0) // Compressed
-    {
-      if (next && !pointer) {
-        *next = buf + 2;
-      }
-      pointer = begin + (htons(*((uint16_t *)buf)) & 0x3FFF);
-      if (pointer >= buf) {
-        return end;
-      }
-      buf = pointer;
-    } else if (label_type == 0x00) // Uncompressed
-    {
-      label_len = (first & 0x3F);
-      name_len += label_len + 1;
-      if (name_len >= 0xFF) {
-        return end;
-      }
-      if (label_len == 0) {
-        if (name_len == 1) {
-          *(name++) = '.';
-        }
-        *name = 0;
-        if (next && !pointer) {
-          *next = buf + label_len + 1;
-        }
-        if (name_len <= 1) {
-          qname.resize(name_len);
-        } else {
-          qname.resize(name_len - 1);
-        }
-        return *next;
-      } else {
-        if (buf + label_len + 1 > end) {
-          return end;
-        }
-        memcpy(name, buf + 1, (std::size_t)label_len);
-        *(name + label_len) = '.';
-        name += label_len + 1;
-        buf += label_len + 1;
-      }
-    } else {
-      return end;
-    }
-  }
-  return end;
 }
 
 std::uint16_t uint16_value(unsigned char const *buff) {
@@ -431,8 +290,9 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
     pos += x;
     pos += 4;
   }
-
+  packet.head.questions = std::move(questions);
   /* read other sections */
+
   read_section(answers, adc, buff, pos);
   packet.body.answers = std::move(answers);
 }
@@ -483,7 +343,7 @@ std::optional<rr_type_t> get_rrtype_info(dns_record_type_e type) {
   return *iter;
 }
 
-int rr_len(char const prop, ucstring &buffer, int ix, int len) {
+int rr_len(char const prop, ucstring_view const &buffer, int ix, int len) {
   auto const msg_rbuffer = buffer.data();
 
   switch (prop) {
@@ -524,9 +384,10 @@ int rr_len(char const prop, ucstring &buffer, int ix, int len) {
     if (ix + x + 1 >= len) {
       throw general_exception_t("A6 too long for RR");
     }
-    if (msg_rbuffer[ix] != 0)
+    if (msg_rbuffer[ix] != 0) {
       /* domain name nessecary */
       x += dom_comprlen(buffer, ix + x + 1);
+    }
     return x + 1;
   }
   case 'o': /* DNS LOC */
@@ -591,5 +452,185 @@ void raw_record_read(dns_record_type_e const rtype, ucstring_ptr &rdata,
   rdata = (unsigned char *)memdup((void *)res.c_str(), res.length());
 }
 
-void serialize_packet(dns_packet_t const &packet) {}
+void serialize_packet(dns_packet_t const &packet) {
+  dns_extractor_t extractor{};
+  auto const result = extractor.extract(packet);
+}
+
+query_result_t dns_extractor_t::extract(dns_packet_t const &packet) {
+  if (packet.head.questions.empty()) {
+    throw general_exception_t("No question item in message");
+  }
+  switch (packet.head.questions[0].type) {
+  case dns_record_type_e::DNS_REC_A:
+    return get_a_record(packet);
+  case dns_record_type_e::DNS_REC_AAAA:
+    return get_aaaa_record(packet);
+  case dns_record_type_e::DNS_REC_MX:
+
+  case dns_record_type_e::DNS_REC_PTR:
+
+  case dns_record_type_e::DNS_REC_NS:
+
+  default:
+    break;
+  }
+  return mx_record_list_t{};
+}
+
+a_record_list_t get_a_record(dns_packet_t const &packet) {
+  a_record_list_t::value_type rec{};
+  auto const records = get_records(packet);
+  a_record_list_t result{};
+  result.reserve(records.size());
+  for (auto const &record : records) {
+    std::copy(record.msg, record.msg + 4, std::back_inserter(rec.address));
+    result.push_back(rec);
+    rec.address.clear();
+  }
+  return result;
+}
+
+aaaa_record_list_t get_aaaa_record(dns_packet_t const &packet) {
+  aaaa_record_list_t result{};
+  aaaa_record_list_t::value_type rec{};
+  auto const records = get_records(packet, true, true);
+  result.reserve(records.size());
+  for (auto const &record : records) {
+    std::copy(record.msg, record.msg + 16, std::back_inserter(rec.address));
+    result.push_back(rec);
+    rec.address.clear();
+  }
+  return result;
+}
+
+mx_record_list_t get_mx_record(dns_packet_t const &packet) {
+  auto const records = get_records(packet, true);
+  mx_record_list_t result{};
+  result.reserve(records.size());
+  for (auto const &record : records) {
+    mx_record_list_t::value_type rec{};
+    rec.pref =
+        raw_record_get_short(record.msg, dns_record_type_e::DNS_REC_MX, 0);
+    rec.server =
+        raw_record_get_domain(record.msg, dns_record_type_e::DNS_REC_MX, 1);
+    result.push_back(std::move(rec));
+  }
+  return result;
+}
+
+ns_record_list_t get_ns_record(dns_packet_t const &packet) {
+  auto const records = get_records(packet, true);
+  ns_record_list_t result{};
+  result.reserve(records.size());
+  for (auto const &record : records) {
+    auto ns_data =
+        raw_record_get_domain(record.msg, dns_record_type_e::DNS_REC_NS, 0);
+    result.push_back({std::move(ns_data)});
+  }
+  return result;
+}
+
+ptr_record_list_t get_ptr_record(dns_packet_t const &packet) {
+  auto const records = get_records(packet, true);
+  ptr_record_list_t result{};
+  result.reserve(records.size());
+  for (auto const &record : records) {
+    result.push_back(
+        {raw_record_get_domain(record.msg, dns_record_type_e::DNS_REC_PTR, 0)});
+  }
+  return result;
+}
+
+std::vector<rr_data_t> get_records(dns_packet_t const &packet,
+                                   bool fail_if_none, bool follow_cname,
+                                   std::vector<domainname> *followed_cnames) {
+  auto const rcode = static_cast<dns_rcode>(packet.head.header.rcode);
+  if (rcode != dns_rcode::DNS_RCODE_NO_ERROR) { // 0
+    throw general_exception_t("Query returned error: " +
+                              rcode_to_string(rcode));
+  }
+  auto &questions = packet.head.questions;
+  auto &first_item = questions.front();
+  return i_get_records(packet, fail_if_none, follow_cname, 10,
+                       first_item.dns_name, first_item.type, followed_cnames);
+}
+
+std::vector<rr_data_t> i_get_records(dns_packet_t const &packet,
+                                     bool fail_if_none, bool follow_cname,
+                                     int recursive_level,
+                                     domainname const &dname,
+                                     dns_record_type_e qtype,
+                                     std::vector<domainname> *followed_cnames) {
+  std::vector<rr_data_t> ret{};
+  domainname dm{};
+  if (recursive_level < 0) {
+    throw general_exception_t("CNAME recursion level reached");
+  }
+  /* look for records */
+  for (auto const &answer : packet.body.answers) {
+    if (answer.name == dname) {
+      if (answer.type == dns_record_type_e::DNS_REC_CNAME && follow_cname &&
+          qtype != dns_record_type_e::DNS_REC_CNAME) {
+        dm = domainname(true, answer.rdata);
+        if (followed_cnames) {
+          followed_cnames->push_back(dm);
+        }
+        return i_get_records(packet, fail_if_none, true, --recursive_level, dm,
+                             qtype, followed_cnames);
+      } else if (answer.type == qtype ||
+                 qtype == dns_record_type_e::DNS_REC_ANY) {
+        ret.push_back(rr_data_t{answer.type, answer.rd_length, answer.rdata});
+      }
+    }
+  }
+  if (fail_if_none && ret.begin() == ret.end()) {
+    throw general_exception_t("No such data available");
+  }
+  return ret;
+}
+
+std::string rcode_to_string(dns_rcode const rcode) {
+  switch (rcode) {
+  case dns_rcode::DNS_RCODE_BADALG:
+    return "Algorithm not supported";
+  case dns_rcode::DNS_RCODE_BADCOOKIE:
+    return "Bad/missing Server Cookie";
+  case dns_rcode::DNS_RCODE_BADKEY:
+    return "Key not recognized";
+  case dns_rcode::DNS_RCODE_BADMODE:
+    return "Bad TKEY Mode";
+  case dns_rcode::DNS_RCODE_BADNAME:
+    return "Duplicate key name";
+  case dns_rcode::DNS_RCODE_BADTIME:
+    return "Signature out of time window";
+  case dns_rcode::DNS_RCODE_BADTRUNC:
+    return "Bad Truncation";
+  case dns_rcode::DNS_RCODE_BADVERS:
+    return "Bad OPT Version";
+  case dns_rcode::DNS_RCODE_FORMAT_ERR:
+    return "format error";
+  case dns_rcode::DNS_RCODE_NOTAUTH:
+    return "Server Not Authoritative for zone";
+  case dns_rcode::DNS_RCODE_NOTZONE:
+    return "Name not contained in zone";
+  case dns_rcode::DNS_RCODE_NOT_IMPLEMENTED:
+    return "not implemented";
+  case dns_rcode::DNS_RCODE_NO_ERROR:
+    return "OK";
+  case dns_rcode::DNS_RCODE_NXDOMAIN:
+    return "non-existing domain";
+  case dns_rcode::DNS_RCODE_NXRRSET:
+    return "non-existing resource record";
+  case dns_rcode::DNS_RCODE_REFUSED:
+    return "request refused";
+  case dns_rcode::DNS_RCODE_SERVER_FAILED:
+    return "internal server error";
+  case dns_rcode::DNS_RCODE_YXDOMAIN:
+    return "Name Exists when it should not";
+  case dns_rcode::DNS_RCODE_YXRRSET:
+    return "RR Set Exists when it should not";
+  }
+  throw general_exception_t{"unknown error"};
+}
 } // namespace dooked

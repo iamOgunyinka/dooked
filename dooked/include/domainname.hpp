@@ -1,11 +1,27 @@
 #pragma once
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace dooked {
 
 using ucstring = std::basic_string<unsigned char>;
 using ucstring_cptr = ucstring::const_pointer;
 using ucstring_ptr = ucstring::pointer;
+using ucstring_view = std::basic_string_view<unsigned char>;
+
+// forward declarations
+enum class dns_record_type_e : std::uint16_t;
+enum class rr_flags_e;
+
+struct rr_type_t {
+  char name[9]{};
+  std::uint16_t type{};
+  char properties[9]{};
+  rr_flags_e flags;
+  dns_record_type_e rr_type_name;
+};
 
 class domainname {
 public:
@@ -268,4 +284,11 @@ void domfromlabel(ucstring_ptr dom, char const *label, int len = -1);
 void txt_to_dname(ucstring_ptr target, char const *src,
                   ucstring_cptr origin = nullptr);
 int domlen(ucstring_cptr dom);
+
+std::optional<rr_type_t> get_rrtype_info(dns_record_type_e type);
+int rr_len(char const prop, ucstring_view const &buffer,
+           int, int);
+std::uint16_t raw_record_get_short(ucstring_cptr rdata, dns_record_type_e, int);
+std::unique_ptr<domainname> raw_record_get_domain(ucstring_cptr,
+                                                  dns_record_type_e, int);
 } // namespace dooked

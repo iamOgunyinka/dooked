@@ -108,10 +108,10 @@ std::uint16_t get_random_integer() {
   return uid(gen);
 }
 
-int dom_comprlen(ucstring const &buff, int ix) {
+int dom_comprlen(ucstring_view const &buff, int ix) {
   int len = 0;
   auto ptr = buff.data() + ix;
-  auto end = buff.data() + buff.size();
+  auto end = buff.data() + buff.length();
 
   while (true) {
     if (ptr >= end) {

@@ -1,11 +1,12 @@
 #pragma once
-#include <boost/asio/ip/address.hpp>
+
 #include <exception>
 #include <filesystem>
 #include <mutex>
 #include <optional>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -79,11 +80,32 @@ public:
   }
 };
 
-struct ip_address_t {
-  std::vector<boost::asio::ip::address> ip_addresses;
+struct ipv4_address_t {
+  std::string address{};
 };
 
-struct mx_record_t {};
+struct ipv6_address_t {
+  std::string address{};
+};
+
+class domainname; // forward declaration
+
+struct mx_record_result_t {
+  std::uint16_t pref{}; // preference
+  std::unique_ptr<domainname> server{};
+};
+
+struct ns_record_result_t {
+  std::unique_ptr<domainname> domain{};
+};
+
+struct ptr_record_result_t {
+  std::unique_ptr<domainname> domain{};
+};
+
+struct other_raw_result_t {
+  std::unique_ptr<char[]> result{};
+};
 
 struct domain_t {
   std::string domain_name{};
@@ -93,11 +115,19 @@ struct domain_t {
 using ucstring = std::basic_string<unsigned char>;
 using ucstring_cptr = ucstring::const_pointer;
 using ucstring_ptr = ucstring::pointer;
-using a_record_t = ip_address_t;
-using aaaa_record_t = ip_address_t;
+using ucstring_view = std::basic_string_view<unsigned char>;
+using a_record_list_t = std::vector<ipv4_address_t>;
+using aaaa_record_list_t = std::vector<ipv6_address_t>;
+using mx_record_list_t = std::vector<mx_record_result_t>;
+using ns_record_list_t = std::vector<ns_record_result_t>;
+using ptr_record_list_t = std::vector<ptr_record_result_t>;
+using other_record_list_t = std::vector<other_raw_result_t>;
 using domain_list_t = synced_queue_t<domain_t>;
 using opt_domain_list_t = std::optional<domain_list_t>;
-using query_result_t = std::variant<a_record_t, aaaa_record_t, mx_record_t>;
+using query_result_t =
+    std::variant<a_record_list_t, aaaa_record_list_t, mx_record_list_t,
+                 ns_record_list_t, ptr_record_list_t, other_record_list_t>;
+
 // free utility functions
 bool is_text_file(std::string const &file_extension);
 bool is_json_file(std::string const &file_extension);
@@ -105,8 +135,9 @@ opt_domain_list_t get_domain_names(std::string const &filename);
 std::string get_file_extension(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
 std::uint16_t uint16_value(unsigned char const *buff);
-int dom_comprlen(ucstring const &, int);
+int dom_comprlen(ucstring_view const &, int);
 ucstring_ptr dom_uncompress(ucstring const &, int);
 ucstring_ptr domdup(ucstring_cptr);
 void *memdup(void const *src, int len);
+
 } // namespace dooked

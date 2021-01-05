@@ -692,4 +692,45 @@ int domainname::ncommon(const domainname &dom) const {
   return domncommon(domain, dom.domain);
 }
 
+void rr_goto(unsigned char *&RDATA, dns_record_type_e rr_type, int ix) {
+  auto info = get_rrtype_info(rr_type);
+  if (!info) {
+    throw general_exception_t("Unknown RR type");
+  }
+
+  char *ptr = info->properties;
+  int len{};
+
+  for (int x = 0; x < ix; x++) {
+    if (ptr[x] == '\0') {
+      throw general_exception_t("RR does not contain that property");
+    }
+    auto buff = ucstring_view(RDATA, 65535);
+    len = rr_len(ptr[x], buff, 0, 65536);
+    RDATA += len;
+  }
+}
+
+ucstring_ptr rr_getbindomain(unsigned char const *rdata,
+                             dns_record_type_e rr_type, int ix) {
+  unsigned char *RDATA = (unsigned char *)rdata;
+  rr_goto(RDATA, rr_type, ix);
+  return domdup(RDATA);
+}
+
+std::unique_ptr<domainname>
+raw_record_get_domain(ucstring_cptr RDATA, dns_record_type_e rr_type, int ix) {
+  ucstring_ptr ptr = rr_getbindomain(RDATA, rr_type, ix);
+  auto dom = domainname(true, ptr);
+  free(ptr);
+  return std::make_unique<domainname>(std::move(dom));
+}
+
+std::uint16_t raw_record_get_short(ucstring_cptr rdata,
+                                   dns_record_type_e rr_type, int ix) {
+  unsigned char *RDATA = (unsigned char *)rdata;
+  rr_goto(RDATA, rr_type, ix);
+  return RDATA[0] * 256 + RDATA[1];
+}
+
 } // namespace dooked

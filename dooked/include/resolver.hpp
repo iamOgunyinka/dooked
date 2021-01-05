@@ -114,22 +114,17 @@ enum class dns_record_type_e : std::uint16_t {
   DNS_REC_URI = 256
 };
 
-enum class dns_section {
-  DNS_SECTION_QUESTION = 0,
-  DNS_SECTION_ANSWER = 1,
-  DNS_SECTION_AUTHORITY = 2,
-  DNS_SECTION_ADDITIONAL = 3
-};
-
+// http://www.tcpipguide.com/free/t_DNSMessageHeaderandQuestionSectionFormat.htm
 enum class dns_rcode {
-  DNS_RCODE_OK = 0,
-  DNS_RCODE_FORMERR = 1,
-  DNS_RCODE_SERVFAIL = 2,
-  DNS_RCODE_NXDOMAIN = 3,
-  DNS_RCODE_NOTIMP = 4,
+  DNS_RCODE_NO_ERROR = 0,
+  DNS_RCODE_FORMAT_ERR = 1,
+  DNS_RCODE_SERVER_FAILED = 2,
+  DNS_RCODE_NXDOMAIN = 3, // non-existing domain
+  DNS_RCODE_NOT_IMPLEMENTED = 4,
   DNS_RCODE_REFUSED = 5,
-  DNS_RCODE_YXDOMAIN = 6,
-  DNS_RCODE_YXRRSET = 7,
+  DNS_RCODE_YXDOMAIN = 6, // name exists when it should not
+  DNS_RCODE_YXRRSET = 7,  // resource record set exist when it should not
+  DNS_RCODE_NXRRSET = 8,  // rr set that should exist does not
   DNS_RCODE_NOTAUTH = 9,
   DNS_RCODE_NOTZONE = 10,
   DNS_RCODE_BADVERS = 16,
@@ -140,14 +135,6 @@ enum class dns_rcode {
   DNS_RCODE_BADALG = 21,
   DNS_RCODE_BADTRUNC = 22,
   DNS_RCODE_BADCOOKIE = 23
-};
-
-enum class dns_class {
-  DNS_CLS_IN = 0x0001,          // DNS Class Internet
-  DNS_CLS_CH = 0x0003,          // DNS Class Chaos
-  DNS_CLS_HS = 0x0004,          // DNS Class Hesiod
-  DNS_CLS_QCLASS_NONE = 0x00FE, // DNS Class QCLASS None
-  DNS_CLS_QCLASS_ANY = 0x00FF   // DNS Class QCLASS Any
 };
 
 struct dns_header_t {
@@ -181,9 +168,9 @@ struct dns_question_t {
   unsigned int dns_class_;
 };
 
-struct dns_head_t {
+struct dns_alternate_head_t {
   dns_header_t header;
-  dns_question_t question;
+  std::vector<dns_alternate_question_t> questions{};
 };
 
 struct dns_record_t {
@@ -211,7 +198,7 @@ struct dns_body_t {
 };
 
 struct dns_packet_t {
-  dns_head_t head;
+  dns_alternate_head_t head;
   dns_body_t body;
 };
 
@@ -222,16 +209,18 @@ enum class rr_flags_e {
   R_ASPCOMPRESS = 3
 };
 
-struct rr_type_t {
-  char name[9]{};
-  std::uint16_t type{};
-  char properties[9]{};
-  rr_flags_e flags = rr_flags_e::R_NONE;
-  dns_record_type_e rr_type_name;
+struct rr_data_t {
+  dns_record_type_e type{};
+  std::uint16_t len{};
+  ucstring_cptr msg{};
 };
 
 struct dns_supported_record_type_t {
   static std::array<rr_type_t, 13> const supported_types;
+};
+
+struct dns_extractor_t {
+  query_result_t extract(dns_packet_t const &);
 };
 
 struct resolver_address_t {
@@ -269,12 +258,6 @@ private:
   void on_data_sent(boost::system::error_code);
   void on_data_received();
   void send_next_request();
-  void parse_dns_response(dns_packet_t &);
-  void parse_dns_header(dns_packet_t &);
-  ucstring::const_pointer parse_dns_question(dns_packet_t &);
-  ucstring::const_pointer parse_dns_qname(dns_packet_t &, ucstring::size_type);
-  void parse_dns_body(dns_packet_t &, ucstring::const_pointer);
-  dns_body_t parse_dns_body_impl(ucstring::const_pointer);
 
 public:
   custom_resolver_socket_t(net::io_context &, domain_list_t &,
@@ -292,4 +275,18 @@ dns_alternate_record_t read_raw_record(ucstring &buf, int &pos);
 void raw_record_read(dns_record_type_e, ucstring_ptr &, std::uint16_t &,
                      ucstring &, int, int);
 void serialize_packet(dns_packet_t const &);
+a_record_list_t get_a_record(dns_packet_t const &);
+aaaa_record_list_t get_aaaa_record(dns_packet_t const &);
+mx_record_list_t get_mx_record(dns_packet_t const &);
+ns_record_list_t get_ns_record(dns_packet_t const &);
+ptr_record_list_t get_ptr_record(dns_packet_t const &);
+std::vector<rr_data_t>
+get_records(dns_packet_t const &packet, bool fail_if_none = false,
+            bool follow_cname = true,
+            std::vector<domainname> *followed_cnames = nullptr);
+std::string rcode_to_string(dns_rcode);
+std::vector<rr_data_t>
+i_get_records(dns_packet_t const &packet, bool fail_if_none, bool follow_cname,
+              int recursive_level, domainname const &dname,
+              dns_record_type_e qt, std::vector<domainname> *followed_cnames);
 } // namespace dooked
