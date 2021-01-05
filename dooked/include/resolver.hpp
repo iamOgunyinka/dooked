@@ -1,7 +1,6 @@
 #pragma once
 #include "domainname.hpp"
 #include "utils.hpp"
-#include <boost/asio/ip/udp.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
 #include <optional>
 #include <string>
@@ -223,12 +222,6 @@ struct dns_extractor_t {
   query_result_t extract(dns_packet_t const &);
 };
 
-struct resolver_address_t {
-  net::ip::udp::endpoint ep{};
-};
-
-using resolver_address_list_t = circular_queue_t<resolver_address_t>;
-
 class custom_resolver_socket_t {
   net::io_context &io_;
   std::optional<udp_stream_t> udp_stream_;
@@ -239,7 +232,7 @@ class custom_resolver_socket_t {
   boost::system::error_code read_ec_{};
 
 private:
-  domain_t name_{};
+  domain_list_t::value_type name_{};
   dns_record_type_e current_rec_type_ = dns_record_type_e::DNS_REC_UNDEFINED;
   int last_processed_dns_index_ = -1;
   int const supported_dns_record_size_;

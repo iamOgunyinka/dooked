@@ -137,7 +137,7 @@ void custom_resolver_socket_t::send_next_request() {
     query_id_ = get_random_integer();
     auto const query_type = static_cast<std::uint16_t>(current_rec_type_);
     generic_buffer_.clear();
-    create_query(name_.domain_name, query_type, query_id_, generic_buffer_);
+    create_query(name_, query_type, query_id_, generic_buffer_);
     send_network_request();
   } catch (empty_container_exception_t const &) {
   } catch (bad_name_exception_t const &) {
@@ -467,11 +467,11 @@ query_result_t dns_extractor_t::extract(dns_packet_t const &packet) {
   case dns_record_type_e::DNS_REC_AAAA:
     return get_aaaa_record(packet);
   case dns_record_type_e::DNS_REC_MX:
-
+    return get_mx_record(packet);
   case dns_record_type_e::DNS_REC_PTR:
-
+    return get_ptr_record(packet);
   case dns_record_type_e::DNS_REC_NS:
-
+    return get_ns_record(packet);
   default:
     break;
   }

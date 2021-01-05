@@ -1,6 +1,5 @@
 #include "utils.hpp"
 #include <boost/process.hpp>
-#include <fstream>
 #include <iostream>
 #include <random>
 
@@ -56,12 +55,12 @@ std::size_t newline_count(std::filesystem::path const &filename) {
   return total_lines;
 }
 
-opt_domain_list_t read_text_file(std::filesystem::path const &file_path) {
+opt_list_t<std::string> read_text_file(std::filesystem::path const &file_path) {
   std::ifstream input_file(file_path);
   if (!input_file) {
     return std::nullopt;
   }
-  domain_list_t domain_names{};
+  std::vector<std::string> domain_names{};
   std::string line{};
   while (std::getline(input_file, line)) {
     line = boost::trim_copy(line);
@@ -73,14 +72,14 @@ opt_domain_list_t read_text_file(std::filesystem::path const &file_path) {
   return domain_names;
 }
 
-opt_domain_list_t read_json_file(std::filesystem::path const &file_path) {
-  return domain_list_t{};
+opt_list_t<std::string> read_json_file(std::filesystem::path const &file_path) {
+  return {};
 }
 
-opt_domain_list_t get_domain_names(std::string const &filename) {
+opt_list_t<std::string> get_names(std::string const &filename) {
   if (filename.empty()) { // use stdin
     std::string domain_name{};
-    domain_list_t domain_names;
+    std::vector<std::string> domain_names;
     while (std::getline(std::cin, domain_name)) {
       domain_names.push_back({domain_name});
     }
@@ -106,6 +105,26 @@ std::uint16_t get_random_integer() {
   static std::uniform_int_distribution<> uid(
       1, std::numeric_limits<std::uint16_t>::max());
   return uid(gen);
+}
+
+std::vector<std::string> split_string(std::string const &str,
+                                      char const *delim) {
+  std::size_t const delim_length = std::strlen(delim);
+  std::size_t from_pos{};
+  std::size_t index{str.find(delim, from_pos)};
+  if (index == std::string::npos) {
+    return {str};
+  }
+  std::vector<std::string> result{};
+  while (index != std::string::npos) {
+    result.emplace_back(str.data() + from_pos, index - from_pos);
+    from_pos = index + delim_length;
+    index = str.find(delim, from_pos);
+  }
+  if (from_pos < str.length()) {
+    result.emplace_back(str.data() + from_pos, str.size() - from_pos);
+  }
+  return result;
 }
 
 int dom_comprlen(ucstring_view const &buff, int ix) {
@@ -142,11 +161,11 @@ int dom_comprlen(ucstring_view const &buff, int ix) {
 }
 
 ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
+  static constexpr int const dom_reclevel = 10;
   int reclevel = 0, len = 0;
   auto ptr = buff.data() + ix;
   auto end = buff.data() + buff.size();
   unsigned char dbuff[255];
-  static constexpr int const dom_reclevel = 10;
 
   while (true) {
     if (ptr >= end) {
@@ -189,5 +208,27 @@ ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
   }
 
   //  return domdup(dbuff);
+}
+
+bool timet_to_string(std::string &output, std::size_t t, char const *format) {
+  std::time_t current_time = t;
+#if _MSC_VER && !__INTEL_COMPILER
+#pragma warning(disable : 4996)
+#endif
+  auto const tm_t = std::localtime(&current_time);
+
+  if (!tm_t) {
+    return false;
+  }
+  output.clear();
+  output.resize(32);
+  auto const trimmed_size =
+      std::strftime(output.data(), output.size(), format, tm_t);
+  if (trimmed_size > 0) {
+    output.resize(trimmed_size);
+    return true;
+  }
+  output.clear();
+  return false;
 }
 } // namespace dooked
