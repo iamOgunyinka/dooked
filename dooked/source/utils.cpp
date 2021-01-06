@@ -30,29 +30,13 @@ std::string get_file_extension(std::filesystem::path const &file_path) {
   try {
     bp::system(command, bp::std_out > out);
   } catch (std::exception const &e) {
-    std::cerr << "Command: " << command;
-    std::cerr << "Exception: " << e.what() << std::endl;
+    spdlog::error("Command: {}.\nException: {}", command, e.what());
     return {};
   }
   std::string console_output{};
   std::getline(out, console_output);
   return console_output;
 #endif
-}
-
-std::size_t newline_count(std::filesystem::path const &filename) {
-  auto const command = "wc -l " + filename.string();
-  bp::ipstream out{};
-  try {
-    bp::system(command, bp::std_out > out);
-  } catch (std::exception const &e) {
-    std::cerr << "Command: " << command;
-    std::cerr << "Exception: " << e.what() << std::endl;
-    return {};
-  }
-  std::size_t total_lines{};
-  out >> total_lines;
-  return total_lines;
 }
 
 opt_list_t<std::string> read_text_file(std::filesystem::path const &file_path) {
@@ -137,10 +121,10 @@ int dom_comprlen(ucstring_view const &buff, int ix) {
       throw invalid_dns_response_t("Domain name exceeds message borders");
     }
 
-    if (*ptr == 0)
+    if (*ptr == 0) {
       /* we're at the end! */
       return len + 1;
-
+    }
     if ((*ptr & 192) == 192) {
       if (ptr + 1 >= end) {
         throw invalid_dns_response_t(
@@ -165,7 +149,7 @@ ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
   int reclevel = 0, len = 0;
   auto ptr = buff.data() + ix;
   auto end = buff.data() + buff.size();
-  unsigned char dbuff[255];
+  unsigned char dbuff[255]{};
 
   while (true) {
     if (ptr >= end) {

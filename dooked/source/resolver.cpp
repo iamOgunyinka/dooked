@@ -48,7 +48,7 @@ void create_query(std::string const &name, std::uint16_t record_type,
 
   // (query_id=2bytes, header=12bytes, question "body" = 4) == 18
   size_t len = name.size() + 18;
-  buffer.resize(len);
+  buffer.resize(len, 0);
 
   /* Set up the header. */
   set_dns_header_value(&buffer[0], request_id);
@@ -136,11 +136,13 @@ void custom_resolver_socket_t::send_next_request() {
     }
     query_id_ = get_random_integer();
     auto const query_type = static_cast<std::uint16_t>(current_rec_type_);
-    generic_buffer_.clear();
-    create_query(name_, query_type, query_id_, generic_buffer_);
+    send_buffer_.clear();
+    create_query(name_, query_type, query_id_, send_buffer_);
     send_network_request();
-  } catch (empty_container_exception_t const &) {
-  } catch (bad_name_exception_t const &) {
+  } catch (empty_container_exception_t const &e) {
+    spdlog::error(e.what());
+  } catch (bad_name_exception_t const &other) {
+    spdlog::error(other.what());
   }
 }
 
@@ -148,11 +150,14 @@ void custom_resolver_socket_t::send_network_request() {
   if (!udp_stream_) {
     return establish_udp_connection();
   }
-
   udp_stream_->async_send_to(
-      net::const_buffer(generic_buffer_.data(), generic_buffer_.size()),
-      current_resolver_.ep,
-      [this](auto const &error_code, auto const) { on_data_sent(error_code); });
+      net::buffer(send_buffer_.data(), send_buffer_.size()),
+      current_resolver_.ep, 0, [this](auto const &error_code, auto const s) {
+#ifdef _DEBUG
+        spdlog::info("Data sent: {}", s);
+#endif // _DEBUG
+        on_data_sent(error_code);
+      });
 }
 
 void custom_resolver_socket_t::on_data_sent(
@@ -160,59 +165,53 @@ void custom_resolver_socket_t::on_data_sent(
   if (!ec) {
     establish_udp_connection(); // get a new resolver and retry
   }
+#ifdef _DEBUG
+  spdlog::info("Receiving network data");
+#endif // _DEBUG
+
   receive_network_data();
 }
 
 void custom_resolver_socket_t::receive_network_data() {
-  generic_buffer_.clear();
+  recv_buffer_.clear();
   static constexpr auto const receive_buf_size = 512;
-  generic_buffer_.resize(receive_buf_size);
-  ops_waiting_ = max_ops_waiting_;
-  read_ec_ = {};
-  bytes_read_ = 0;
-
+  recv_buffer_.resize(receive_buf_size, 0);
+  static net::ip::udp::endpoint default_ep{};
   udp_stream_->async_receive_from(
-      net::mutable_buffer(generic_buffer_.data(), receive_buf_size),
-      current_resolver_.ep,
-      [=](auto const err_code, std::size_t const bytes_received) {
-        bytes_read_ = bytes_received;
-        if (--ops_waiting_ == max_ops_waiting_ - 1) {
-          timer_.cancel();
-          read_ec_ = err_code;
-        } else if (ops_waiting_ == 0) {
-          return on_data_received();
+      net::buffer(recv_buffer_.data(), receive_buf_size), default_ep,
+      [this](boost::system::error_code const err_code,
+             std::size_t const bytes_received) {
+#ifdef _DEBUG
+        spdlog::info("Data received. Bytes received: {}", bytes_received);
+#endif // _DEBUG
+        if (bytes_received == 0 || err_code == net::error::operation_aborted) {
+          udp_stream_.reset();
+          return send_network_request();
+        } else if (!err_code && bytes_received != 0) {
+          on_data_received(err_code, bytes_received);
         }
       });
-  timer_.expires_after(std::chrono::seconds(30));
-  timer_.async_wait([=](boost::system::error_code const error_code) {
-    if (--ops_waiting_ == max_ops_waiting_ - 1) {
+  timer_.emplace(io_, std::chrono::seconds(30));
+  timer_->async_wait([=](boost::system::error_code const error) {
+    if (!error) {
       udp_stream_->cancel();
-      if (error_code) {
-        read_ec_ = net::error::timed_out;
-      } else {
-        read_ec_ = error_code;
-      }
-    } else if (ops_waiting_ == 0) {
-      on_data_received();
     }
   });
 }
 
-void custom_resolver_socket_t::on_data_received() {
-  if (bytes_read_ == 0 || read_ec_ == net::error::timed_out) {
-    udp_stream_.reset();
-    return send_network_request();
-  }
-  if (bytes_read_ < sizeof_packet_header) {
+void custom_resolver_socket_t::on_data_received(
+    boost::system::error_code const ec, std::size_t const bytes_read) {
+  spdlog::error("{} ====== {}", recv_buffer_.size(), bytes_read);
+  if (bytes_read < sizeof_packet_header) {
     return send_next_request();
   }
-  generic_buffer_.resize(bytes_read_);
-  bytes_read_ = 0;
+  recv_buffer_.resize(bytes_read);
   dns_packet_t packet{};
   try {
-    alternate_parse_dns(packet, generic_buffer_);
+    alternate_parse_dns(packet, recv_buffer_);
     serialize_packet(packet);
-  } catch (std::exception const &) {
+  } catch (std::exception const &e) {
+    spdlog::error(e.what());
   }
   send_next_request();
 }
@@ -396,7 +395,7 @@ int rr_len(char const prop, ucstring_view const &buffer, int ix, int len) {
     }
     return 16;
   }
-  throw general_exception_t("Unknown RR item type " + std::string(1, prop));
+  throw general_exception_t("Unknown RR item type {}"_format(prop));
 }
 
 void raw_record_read(dns_record_type_e const rtype, ucstring_ptr &rdata,
@@ -452,9 +451,26 @@ void raw_record_read(dns_record_type_e const rtype, ucstring_ptr &rdata,
   rdata = (unsigned char *)memdup((void *)res.c_str(), res.length());
 }
 
+template <typename T> std::string to_string(T const &data) {
+#ifdef _DEBUG
+  spdlog::info("to_string");
+#endif
+  if constexpr (std::is_same_v<T, a_record_list_t>) {
+    return {};
+  } else if constexpr (std::is_same_v<T, aaaa_record_list_t>) {
+
+  } else if constexpr (std::is_same_v<T, mx_record_list_t>) {
+  } else if constexpr (std::is_same_v<T, ns_record_list_t>) {
+  } else if constexpr (std::is_same_v<T, ptr_record_list_t>) {
+  } else if constexpr (std::is_same_v<T, other_record_list_t>) {
+  }
+  return {};
+}
+
 void serialize_packet(dns_packet_t const &packet) {
   dns_extractor_t extractor{};
   auto const result = extractor.extract(packet);
+  std::visit([](auto &&data) { spdlog::info(to_string(data)); }, result);
 }
 
 query_result_t dns_extractor_t::extract(dns_packet_t const &packet) {
@@ -547,8 +563,8 @@ std::vector<rr_data_t> get_records(dns_packet_t const &packet,
                                    std::vector<domainname> *followed_cnames) {
   auto const rcode = static_cast<dns_rcode>(packet.head.header.rcode);
   if (rcode != dns_rcode::DNS_RCODE_NO_ERROR) { // 0
-    throw general_exception_t("Query returned error: " +
-                              rcode_to_string(rcode));
+    throw general_exception_t(
+        "Query returned error: {}"_format(rcode_to_string(rcode)));
   }
   auto &questions = packet.head.questions;
   auto &first_item = questions.front();

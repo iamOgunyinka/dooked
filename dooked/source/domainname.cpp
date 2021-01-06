@@ -2,6 +2,7 @@
 #include "utils.hpp"
 
 namespace dooked {
+
 constexpr int const domain_len = 0xFF;
 constexpr int const domlabel_len = 63;
 char incr_mask[8] = {0, 128, 192, 224, 240, 248, 252, 254};
@@ -23,8 +24,7 @@ void domfromlabel(ucstring_ptr dom, char const *label, int len) {
     len = strlen(label);
   }
   if (len > domlabel_len) {
-    throw general_exception_t(std::string("Domain name label ") + label +
-                              " too long");
+    throw general_exception_t("Domain name label {} too long"_format(label));
   }
   dom[0] = len;
   memcpy(dom + 1, label, len);
@@ -118,8 +118,8 @@ int txt_to_int_internal(char const *_buff, bool support_negative) {
   bool have_digit = false;
   if (*buff == '-') {
     if (!support_negative) {
-      throw general_exception_t(std::string("Negative number not supported: ") +
-                                _buff);
+      throw general_exception_t(
+          "Negative number not supported: {}"_format(_buff));
     }
     neg = true;
     buff++;
@@ -133,8 +133,7 @@ int txt_to_int_internal(char const *_buff, bool support_negative) {
       if (*buff == '\0') {
         val += tmpval;
         if (!have_digit) {
-          throw general_exception_t(std::string("Incorrect numeric value ") +
-                                    _buff);
+          throw general_exception_t("Incorrect numeric value {}"_format(_buff));
         }
         return neg ? -val : val;
       }
@@ -156,8 +155,7 @@ int txt_to_int_internal(char const *_buff, bool support_negative) {
       } else if (*buff == 'y') {
         tmpval *= 31536000;
       } else {
-        throw general_exception_t("Incorrect numeric value " +
-                                  std::string(_buff));
+        throw general_exception_t("Incorrect numeric value {}"_format(_buff));
       }
       val += tmpval;
       tmpval = 0;
@@ -209,7 +207,7 @@ int txt_to_ipv6(unsigned char ipv6[16], char const *buff, bool do_portion) {
         txt_to_ip(&ipv6[node * 2], &buff[nodestart]);
       } catch (std::exception const &p) {
         throw general_exception_t(
-            std::string("Error in embedded IPv4 number: ") + p.what());
+            "Error in embedded IPv4 number: {}"_format(p.what()));
       }
       node++;
       if (node == 8) {
@@ -320,8 +318,9 @@ void txt_to_ip6range(unsigned char *iprange, char const *val) {
     txt_to_ipv6(iprange + 16, buff);
   } else {
     memset(iprange, 0, 16);
-    for (x = txt_to_ipv6(iprange + 16, val, true) - 1; x >= 0; x--)
+    for (x = txt_to_ipv6(iprange + 16, val, true) - 1; x >= 0; x--) {
       iprange[x] = 255;
+    }
   }
 }
 
@@ -349,8 +348,9 @@ void txt_to_dname(ucstring_ptr target, char const *src, ucstring_cptr origin) {
 
   target[0] = '\0';
 
-  if (src[0] == '.' && src[1] == '\0')
+  if (src[0] == '.' && src[1] == '\0') {
     return;
+  }
 
   while (*src) {
     if (src[0] == '.' && src[1] != '\0') {
@@ -443,7 +443,7 @@ ucstring_ptr dom_plabel(ucstring_cptr dom, int label) {
   }
   while (label--) {
     if (*ret == 0) {
-      throw ucstring_ptr("Label not in domain name");
+      throw general_exception_t("Label not in domain name");
     }
     ret += *ret + 1;
   }

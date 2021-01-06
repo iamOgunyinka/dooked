@@ -1,5 +1,6 @@
 #pragma once
 
+#include "spdlog/spdlog.h"
 #include <boost/asio/ip/udp.hpp>
 #include <exception>
 #include <filesystem>
@@ -13,6 +14,8 @@
 #include <vector>
 
 namespace dooked {
+using namespace fmt::v7;
+
 template <typename T> using opt_list_t = std::optional<std::vector<T>>;
 
 enum file_type_e { stdin_type, txt_type, json_type, unknown_type };
@@ -74,7 +77,7 @@ struct bad_name_exception_t : std::runtime_error {
 // however, multiple threads will read from it later.
 template <typename T, typename Container = std::deque<T>> class synced_queue_t {
   std::queue<T, Container> container{};
-  std::mutex mutex{};
+  std::mutex mutex_{};
 
 public:
   synced_queue_t() = default;
@@ -84,7 +87,7 @@ public:
   void push_back(T const &item) { container.push(item); }
   void push_back(T &&item) { container.push(std::move(item)); }
   T next_item() {
-    std::lock_guard<std::mutex> lockg{mutex};
+    std::lock_guard<std::mutex> lockg{mutex_};
     if (container.empty()) {
       throw empty_container_exception_t{};
     }

@@ -11,8 +11,8 @@ using udp_stream_t = net::ip::udp::socket;
 
 template <typename Value>
 constexpr void set_16bit_value(unsigned char *p, Value const value) {
-  p[0] = (value >> 8) & 0xFF;
-  p[1] = (value & 0xFF);
+  p[0] = static_cast<unsigned char>((value >> 8) & 0xFF);
+  p[1] = static_cast<unsigned char>(value & 0xFF);
 }
 
 template <typename Value>
@@ -225,23 +225,20 @@ struct dns_extractor_t {
 class custom_resolver_socket_t {
   net::io_context &io_;
   std::optional<udp_stream_t> udp_stream_;
-  net::steady_timer timer_;
+  std::optional<net::steady_timer> timer_;
   domain_list_t &names_;
   resolver_address_list_t &resolvers_;
   resolver_address_t current_resolver_{};
-  boost::system::error_code read_ec_{};
 
 private:
   domain_list_t::value_type name_{};
   dns_record_type_e current_rec_type_ = dns_record_type_e::DNS_REC_UNDEFINED;
   int last_processed_dns_index_ = -1;
   int const supported_dns_record_size_;
-  static constexpr int const max_ops_waiting_ = 2;
   static constexpr std::size_t const sizeof_packet_header = 12;
-  int ops_waiting_{};
   std::uint16_t query_id_{};
-  std::size_t bytes_read_{};
-  ucstring generic_buffer_{};
+  ucstring send_buffer_{};
+  ucstring recv_buffer_{};
 
 private:
   dns_record_type_e next_record_type();
@@ -249,7 +246,7 @@ private:
   void receive_network_data();
   void establish_udp_connection();
   void on_data_sent(boost::system::error_code);
-  void on_data_received();
+  void on_data_received(boost::system::error_code, std::size_t);
   void send_next_request();
 
 public:
