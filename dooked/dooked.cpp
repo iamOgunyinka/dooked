@@ -103,7 +103,7 @@ void run_program(cli_args_t const &cli_args) {
     if (!output_specified || cli_args.include_date) {
       std::string appended_time{};
       bool const time_obtained =
-          timet_to_string(appended_time, std::time(nullptr), "%d%m%Y_%H%M%S");
+          timet_to_string(appended_time, std::time(nullptr), "%d_%m_%Y__%H_%M_%S");
       if (output_specified && time_obtained) {
         filename = "{}-{}.json"_format(cli_args.output_filename, appended_time);
       } else if (!output_specified && !time_obtained) {
@@ -113,7 +113,7 @@ void run_program(cli_args_t const &cli_args) {
         spdlog::warn("Unable to generate name for output file");
         filename = cli_args.output_filename + ".json";
       } else if (!output_specified && time_obtained) {
-        filename = "{}.json"_format(appended_time);
+        filename = "dooked-{}.json"_format(appended_time);
       }
     } else {
       filename = "{}.json"_format(cli_args.output_filename);

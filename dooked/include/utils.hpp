@@ -1,6 +1,7 @@
 #pragma once
 
 #include "spdlog/spdlog.h"
+#include "ucstring.hpp"
 #include <boost/asio/ip/udp.hpp>
 #include <exception>
 #include <filesystem>
@@ -102,11 +103,11 @@ public:
 };
 
 struct ipv4_address_t {
-  std::string address{};
+  char address[4]{};
 };
 
 struct ipv6_address_t {
-  std::string address{};
+  char address[16]{};
 };
 
 class domainname; // forward declaration
@@ -129,10 +130,6 @@ struct other_raw_result_t {
 };
 
 // name aliases
-using ucstring = std::basic_string<unsigned char>;
-using ucstring_cptr = ucstring::const_pointer;
-using ucstring_ptr = ucstring::pointer;
-using ucstring_view = std::basic_string_view<unsigned char>;
 using a_record_list_t = std::vector<ipv4_address_t>;
 using aaaa_record_list_t = std::vector<ipv6_address_t>;
 using mx_record_list_t = std::vector<mx_record_result_t>;
@@ -155,8 +152,8 @@ std::uint16_t get_random_integer();
 bool timet_to_string(std::string &output, std::size_t t, char const *format);
 std::uint16_t uint16_value(unsigned char const *buff);
 int dom_comprlen(ucstring_view const &, int);
-ucstring_ptr dom_uncompress(ucstring const &, int);
-ucstring_ptr domdup(ucstring_cptr);
+ucstring::pointer dom_uncompress(ucstring const &, int);
+ucstring::pointer domdup(ucstring::const_pointer);
 void *memdup(void const *src, int len);
-
+std::string arecord_to_string(ipv4_address_t const&);
 } // namespace dooked

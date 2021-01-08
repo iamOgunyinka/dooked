@@ -144,11 +144,19 @@ int dom_comprlen(ucstring_view const &buff, int ix) {
   }
 }
 
-ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
+std::string arecord_to_string(ipv4_address_t const &a) {
+  auto &add = a.address;
+  return "{}.{}.{}.{}"_format(
+      static_cast<int>(add[0]), static_cast<int>(add[1]),
+      static_cast<int>(add[2]), static_cast<int>(add[3]));
+}
+
+ucstring::pointer dom_uncompress(ucstring const &buff, int ix) {
   static constexpr int const dom_reclevel = 10;
   int reclevel = 0, len = 0;
-  auto ptr = buff.data() + ix;
-  auto end = buff.data() + buff.size();
+  auto message_start = buff.cdata();
+  auto ptr = message_start + ix;
+  auto end = message_start + buff.size();
   unsigned char dbuff[255]{};
 
   while (true) {
@@ -170,10 +178,10 @@ ucstring_ptr dom_uncompress(ucstring const &buff, int ix) {
             "Compression offset exceeds message borders");
       }
       int const val = (ptr[0] & 63) * 256 + ptr[1];
-      if (val >= (ptr - buff.data())) {
+      if (val >= (ptr - message_start)) {
         throw invalid_dns_response_t("Bad compression offset");
       }
-      ptr = buff.data() + val;
+      ptr = message_start + val;
       continue;
     }
 

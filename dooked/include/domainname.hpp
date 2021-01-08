@@ -1,15 +1,14 @@
 #pragma once
+
+#include "ucstring.hpp"
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 namespace dooked {
 
-using ucstring = std::basic_string<unsigned char>;
 using ucstring_cptr = ucstring::const_pointer;
 using ucstring_ptr = ucstring::pointer;
-using ucstring_view = std::basic_string_view<unsigned char>;
 
 // forward declarations
 enum class dns_record_type_e : std::uint16_t;
@@ -286,8 +285,7 @@ void txt_to_dname(ucstring_ptr target, char const *src,
 int domlen(ucstring_cptr dom);
 
 std::optional<rr_type_t> get_rrtype_info(dns_record_type_e type);
-int rr_len(char const prop, ucstring_view const &buffer,
-           int, int);
+int rr_len(char const prop, ucstring_view const &buffer, int, int);
 std::uint16_t raw_record_get_short(ucstring_cptr rdata, dns_record_type_e, int);
 std::unique_ptr<domainname> raw_record_get_domain(ucstring_cptr,
                                                   dns_record_type_e, int);

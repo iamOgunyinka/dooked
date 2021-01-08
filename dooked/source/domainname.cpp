@@ -584,9 +584,8 @@ domainname::domainname(char const *string, ucstring_cptr origin) {
   domain = domdup(tmp);
 }
 
-domainname::domainname(ucstring &buff, int ix) {
-  domain = dom_uncompress(buff, ix);
-}
+domainname::domainname(ucstring &buff, int ix)
+    : domain{dom_uncompress(buff, ix)} {}
 
 domainname::domainname(bool val, ucstring_cptr dom) : domain{domdup(dom)} {}
 
@@ -611,7 +610,7 @@ domainname &domainname::operator=(char const *buff) {
 }
 
 bool domainname::operator==(domainname const &nam) const {
-  return domain == nam.domain;
+  return domcmp(domain, nam.domain);
 }
 
 bool domainname::operator!=(const domainname &nam) const {

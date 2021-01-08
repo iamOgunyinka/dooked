@@ -1,4 +1,5 @@
 #include "resolver.hpp"
+#include "ucstring.hpp"
 
 namespace dooked {
 
@@ -29,7 +30,7 @@ std::array<rr_type_t, 13> const dns_supported_record_type_t::supported_types{
     rr_type_t{"DNAME", 39, "d", rr_flags_e::R_ASP,
               dns_record_type_e::DNS_REC_DNAME}};
 
-void set_dns_header_value(ucstring::value_type *q, std::uint16_t id) {
+void set_dns_header_value(ucstring::pointer q, std::uint16_t id) {
   set_qid(q, id);
   set_opcode(q, 0);    // set opcode to 'Query' type
   set_opcode_rd(q, 1); // set the RD flag to 1.
@@ -48,7 +49,7 @@ void create_query(std::string const &name, std::uint16_t record_type,
 
   // (query_id=2bytes, header=12bytes, question "body" = 4) == 18
   size_t len = name.size() + 18;
-  buffer.resize(len, 0);
+  buffer.resize(len);
 
   /* Set up the header. */
   set_dns_header_value(&buffer[0], request_id);
@@ -121,7 +122,7 @@ void create_query(std::string const &name, std::uint16_t record_type,
 custom_resolver_socket_t::custom_resolver_socket_t(
     net::io_context &io_context, domain_list_t &domain_list,
     resolver_address_list_t &resolvers)
-    : io_{io_context}, timer_{io_}, names_{domain_list}, resolvers_{resolvers},
+    : io_{io_context}, names_{domain_list}, resolvers_{resolvers},
       supported_dns_record_size_{
           dns_supported_record_type_t::supported_types.size()} {}
 
@@ -129,11 +130,15 @@ void custom_resolver_socket_t::start() { send_next_request(); }
 
 void custom_resolver_socket_t::send_next_request() {
   try {
+    if (name_.empty()) {
+      name_ = names_.next_item();
+    }
     current_rec_type_ = next_record_type();
     if (current_rec_type_ == dns_record_type_e::DNS_REC_UNDEFINED) {
       name_ = names_.next_item();
       current_rec_type_ = next_record_type();
     }
+
     query_id_ = get_random_integer();
     auto const query_type = static_cast<std::uint16_t>(current_rec_type_);
     send_buffer_.clear();
@@ -152,38 +157,40 @@ void custom_resolver_socket_t::send_network_request() {
   }
   udp_stream_->async_send_to(
       net::buffer(send_buffer_.data(), send_buffer_.size()),
-      current_resolver_.ep, 0, [this](auto const &error_code, auto const s) {
+      current_resolver_.ep, 0, [this](auto const, auto const s) {
 #ifdef _DEBUG
         spdlog::info("Data sent: {}", s);
 #endif // _DEBUG
-        on_data_sent(error_code);
+        on_data_sent();
       });
 }
 
-void custom_resolver_socket_t::on_data_sent(
-    boost::system::error_code const ec) {
-  if (!ec) {
-    establish_udp_connection(); // get a new resolver and retry
-  }
+void custom_resolver_socket_t::on_data_sent() {
 #ifdef _DEBUG
   spdlog::info("Receiving network data");
 #endif // _DEBUG
 
-  receive_network_data();
+  return receive_network_data();
 }
 
 void custom_resolver_socket_t::receive_network_data() {
   recv_buffer_.clear();
   static constexpr auto const receive_buf_size = 512;
-  recv_buffer_.resize(receive_buf_size, 0);
-  static net::ip::udp::endpoint default_ep{};
+  recv_buffer_.resize(receive_buf_size);
+  if (!default_ep_) {
+    default_ep_.emplace();
+  }
+  result_ready_ = false;
+
   udp_stream_->async_receive_from(
-      net::buffer(recv_buffer_.data(), receive_buf_size), default_ep,
+      net::buffer(&recv_buffer_[0], receive_buf_size), *default_ep_,
       [this](boost::system::error_code const err_code,
              std::size_t const bytes_received) {
 #ifdef _DEBUG
         spdlog::info("Data received. Bytes received: {}", bytes_received);
+        spdlog::error("Error: {}", err_code.message());
 #endif // _DEBUG
+        result_ready_ = true;
         if (bytes_received == 0 || err_code == net::error::operation_aborted) {
           udp_stream_.reset();
           return send_network_request();
@@ -191,12 +198,6 @@ void custom_resolver_socket_t::receive_network_data() {
           on_data_received(err_code, bytes_received);
         }
       });
-  timer_.emplace(io_, std::chrono::seconds(30));
-  timer_->async_wait([=](boost::system::error_code const error) {
-    if (!error) {
-      udp_stream_->cancel();
-    }
-  });
 }
 
 void custom_resolver_socket_t::on_data_received(
@@ -221,7 +222,16 @@ void custom_resolver_socket_t::establish_udp_connection() {
   udp_stream_.emplace(io_);
   udp_stream_->open(net::ip::udp::v4());
   udp_stream_->set_option(net::ip::udp::socket::reuse_address(true));
+
   return send_network_request();
+}
+
+void custom_resolver_socket_t::create_connection() {
+  udp_stream_->async_connect(current_resolver_.ep, [=](auto const err_code) {
+    if (!err_code) {
+      return send_network_request();
+    }
+  });
 }
 
 dns_record_type_e custom_resolver_socket_t::next_record_type() {
@@ -230,7 +240,7 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
     return supported_types[++last_processed_dns_index_].rr_type_name;
   }
   // special case: done with current name, retrieve next one.
-  if (last_processed_dns_index_ >= supported_dns_record_size_) {
+  if (last_processed_dns_index_ >= (supported_dns_record_size_ - 1)) {
     last_processed_dns_index_ = -1;
     return dns_record_type_e::DNS_REC_UNDEFINED;
   }
@@ -238,11 +248,13 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
 }
 
 std::uint16_t uint16_value(unsigned char const *buff) {
-  return buff[0] * 256 + buff[1];
+  auto const result = buff[0] * 256 + buff[1];
+  return result;
 }
 
 std::uint32_t uint32_value(unsigned char const *buff) {
-  return uint16_value(buff) * 65'536 + uint16_value(buff + 2);
+  auto const result = uint16_value(buff) * 65'536 + uint16_value(buff + 2);
+  return result;
 }
 
 void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
@@ -252,7 +264,7 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   }
 
   auto &header = packet.head.header;
-  auto const *data = buff.data();
+  auto const *data = buff.cdata();
 
   header.id = uint16_value(data);
   header.qr = data[2] & 128;
@@ -263,37 +275,32 @@ void alternate_parse_dns(dns_packet_t &packet, ucstring &buff) {
   header.ra = data[3] & 128;
   header.z = (data[3] & 112) >> 3;
   header.rcode = data[3] & 15;
+  int const question_count = uint16_value(data + 4);
+  int const answer_count = uint16_value(data + 6);
 
-  int const qdc = uint16_value(data + 4);
-  int const adc = uint16_value(data + 6);
-  int const nsc = uint16_value(data + 8);
-  int const arc = uint16_value(data + 10);
   int pos = 12;
-  /* read question section */
-  std::vector<dns_alternate_question_t> questions{};
-  std::vector<dns_alternate_record_t> answers{};
 
-  for (int t = 0; t < qdc; t++) {
+  /* read question section */
+  auto &questions = packet.head.questions;
+  for (int t = 0; t < question_count; t++) {
     if (pos >= buffer_len) {
       throw invalid_dns_response_t("Message too small for question item!");
     }
     int const x = dom_comprlen(buff, pos);
     if (pos + x + 4 > buffer_len) {
-      throw invalid_dns_response_t("Message too small for question item !");
+      throw invalid_dns_response_t("Message too small for question item!");
     }
     auto const dns_type =
         static_cast<dns_record_type_e>(uint16_value(data + pos + x));
     auto const dns_class = uint16_value(data + pos + x + 2);
+
     questions.push_back({domainname(buff, pos), dns_type, dns_class});
-
-    pos += x;
-    pos += 4;
+    pos += x + 4;
   }
-  packet.head.questions = std::move(questions);
-  /* read other sections */
 
-  read_section(answers, adc, buff, pos);
-  packet.body.answers = std::move(answers);
+  /* read other sections */
+  auto &answers = packet.body.answers;
+  read_section(answers, answer_count, buff, pos);
 }
 
 void read_section(std::vector<dns_alternate_record_t> &answers, int count,
@@ -455,8 +462,16 @@ template <typename T> std::string to_string(T const &data) {
 #ifdef _DEBUG
   spdlog::info("to_string");
 #endif
+  std::string result{};
   if constexpr (std::is_same_v<T, a_record_list_t>) {
-    return {};
+    if (data.empty()) {
+      return "[]";
+    }
+    result = "[{}"_format(arecord_to_string(data[0]));
+    for (int i = 1; i < data.size(); ++i) {
+      result += ", {}"_format(arecord_to_string(data[i]));
+    }
+    result += "]";
   } else if constexpr (std::is_same_v<T, aaaa_record_list_t>) {
 
   } else if constexpr (std::is_same_v<T, mx_record_list_t>) {
@@ -464,7 +479,7 @@ template <typename T> std::string to_string(T const &data) {
   } else if constexpr (std::is_same_v<T, ptr_record_list_t>) {
   } else if constexpr (std::is_same_v<T, other_record_list_t>) {
   }
-  return {};
+  return result;
 }
 
 void serialize_packet(dns_packet_t const &packet) {
@@ -500,9 +515,8 @@ a_record_list_t get_a_record(dns_packet_t const &packet) {
   a_record_list_t result{};
   result.reserve(records.size());
   for (auto const &record : records) {
-    std::copy(record.msg, record.msg + 4, std::back_inserter(rec.address));
+    memcpy(rec.address, (void *)record.msg, 4);
     result.push_back(rec);
-    rec.address.clear();
   }
   return result;
 }
@@ -513,9 +527,8 @@ aaaa_record_list_t get_aaaa_record(dns_packet_t const &packet) {
   auto const records = get_records(packet, true, true);
   result.reserve(records.size());
   for (auto const &record : records) {
-    std::copy(record.msg, record.msg + 16, std::back_inserter(rec.address));
+    memcpy(rec.address, (void *)record.msg, 4);
     result.push_back(rec);
-    rec.address.clear();
   }
   return result;
 }
@@ -586,7 +599,8 @@ std::vector<rr_data_t> i_get_records(dns_packet_t const &packet,
   /* look for records */
   for (auto const &answer : packet.body.answers) {
     if (answer.name == dname) {
-      if (answer.type == dns_record_type_e::DNS_REC_CNAME && follow_cname &&
+      auto const type = answer.type;
+      if (type == dns_record_type_e::DNS_REC_CNAME && follow_cname &&
           qtype != dns_record_type_e::DNS_REC_CNAME) {
         dm = domainname(true, answer.rdata);
         if (followed_cnames) {
@@ -594,8 +608,7 @@ std::vector<rr_data_t> i_get_records(dns_packet_t const &packet,
         }
         return i_get_records(packet, fail_if_none, true, --recursive_level, dm,
                              qtype, followed_cnames);
-      } else if (answer.type == qtype ||
-                 qtype == dns_record_type_e::DNS_REC_ANY) {
+      } else if (type == qtype || qtype == dns_record_type_e::DNS_REC_ANY) {
         ret.push_back(rr_data_t{answer.type, answer.rd_length, answer.rdata});
       }
     }
