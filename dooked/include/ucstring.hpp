@@ -3,7 +3,7 @@
 namespace dooked {
 
 /*
-we need a string type that doesn't automatically 
+we need a string type that doesn't automatically
 append a '\0' after the sequence.
 */
 class ucstring {
@@ -39,6 +39,7 @@ public:
 public:
   ucstring_view(const_pointer d, size_t sz) : len_{sz}, data_{d} {}
   ucstring_view(ucstring const &s) : len_{s.size()}, data_{s.cdata()} {}
+  ucstring_view(ucstring const &s, size_t sz) : len_{sz}, data_{s.cdata()} {}
   size_t size() const { return len_; }
   size_t length() const { return len_; }
   pointer data() const { return data_; }

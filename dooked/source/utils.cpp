@@ -91,26 +91,6 @@ std::uint16_t get_random_integer() {
   return uid(gen);
 }
 
-std::vector<std::string> split_string(std::string const &str,
-                                      char const *delim) {
-  std::size_t const delim_length = std::strlen(delim);
-  std::size_t from_pos{};
-  std::size_t index{str.find(delim, from_pos)};
-  if (index == std::string::npos) {
-    return {str};
-  }
-  std::vector<std::string> result{};
-  while (index != std::string::npos) {
-    result.emplace_back(str.data() + from_pos, index - from_pos);
-    from_pos = index + delim_length;
-    index = str.find(delim, from_pos);
-  }
-  if (from_pos < str.length()) {
-    result.emplace_back(str.data() + from_pos, str.size() - from_pos);
-  }
-  return result;
-}
-
 int dom_comprlen(ucstring_view const &buff, int ix) {
   int len = 0;
   auto ptr = buff.data() + ix;
@@ -142,64 +122,6 @@ int dom_comprlen(ucstring_view const &buff, int ix) {
       throw invalid_dns_response_t("Domain name too long");
     }
   }
-}
-
-std::string arecord_to_string(ipv4_address_t const &a) {
-  auto &add = a.address;
-  return "{}.{}.{}.{}"_format(
-      static_cast<int>(add[0]), static_cast<int>(add[1]),
-      static_cast<int>(add[2]), static_cast<int>(add[3]));
-}
-
-ucstring::pointer dom_uncompress(ucstring const &buff, int ix) {
-  static constexpr int const dom_reclevel = 10;
-  int reclevel = 0, len = 0;
-  auto message_start = buff.cdata();
-  auto ptr = message_start + ix;
-  auto end = message_start + buff.size();
-  unsigned char dbuff[255]{};
-
-  while (true) {
-    if (ptr >= end) {
-      throw invalid_dns_response_t("Domain name exceeds message borders");
-    }
-    if (*ptr == 0) {
-      /* we're at the end! */
-      dbuff[len] = '\0';
-      return domdup(dbuff);
-    }
-
-    if ((*ptr & 192) == 192) {
-      if (++reclevel >= dom_reclevel) {
-        throw invalid_dns_response_t("Max dom recursion level reached");
-      }
-      if (ptr + 1 >= end) {
-        throw invalid_dns_response_t(
-            "Compression offset exceeds message borders");
-      }
-      int const val = (ptr[0] & 63) * 256 + ptr[1];
-      if (val >= (ptr - message_start)) {
-        throw invalid_dns_response_t("Bad compression offset");
-      }
-      ptr = message_start + val;
-      continue;
-    }
-
-    if ((*ptr & 192) != 0) {
-      throw invalid_dns_response_t("Unknown domain label type");
-    }
-    if (len + *ptr + 1 >= 255) {
-      throw invalid_dns_response_t("Domain name too long");
-    }
-    if (ptr + *ptr + 1 >= end) {
-      throw invalid_dns_response_t("Domain name exceeds message borders");
-    }
-    memcpy(dbuff + len, ptr, *ptr + 1);
-    len += *ptr + 1;
-    ptr += *ptr + 1;
-  }
-
-  //  return domdup(dbuff);
 }
 
 bool timet_to_string(std::string &output, std::size_t t, char const *format) {

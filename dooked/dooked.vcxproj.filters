@@ -24,10 +24,10 @@
     <ClCompile Include="source\resolver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\domainname.cpp">
+    <ClCompile Include="source\ucstring.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\ucstring.cpp">
+    <ClCompile Include="source\dns.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -38,10 +38,13 @@
     <ClInclude Include="include\resolver.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\domainname.hpp">
+    <ClInclude Include="include\ucstring.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\ucstring.hpp">
+    <ClInclude Include="include\dns.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\tdefines.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
