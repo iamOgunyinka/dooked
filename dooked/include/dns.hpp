@@ -13,15 +13,15 @@
 #include <vector>
 
 namespace dooked {
-struct dns_alternate_question_t {
-  ucstring_view dns_name;
+struct dns_question_t {
+  ucstring_view_t dns_name;
   dns_record_type_e type;
   unsigned int dns_class_;
 };
 
-struct dns_alternate_head_t {
+struct dns_head_t {
   dns_header_t header;
-  std::vector<dns_alternate_question_t> questions{};
+  std::vector<dns_question_t> questions{};
 };
 
 struct static_string_t {
@@ -58,7 +58,7 @@ struct dns_body_t {
 };
 
 struct dns_packet_t {
-  dns_alternate_head_t head;
+  dns_head_t head;
   dns_body_t body;
 };
 
@@ -79,7 +79,7 @@ bool dns_print_readable(char **buf, size_t buflen, unsigned char const *source,
 std::string dns_name2str(static_string_t const &name);
 std::string dns_raw_record_data2str(dns_alternate_record_t *record,
                                     std::uint8_t *begin, std::uint8_t *end);
-dns_section dns_get_section(std::uint16_t index, dns_alternate_head_t *header);
+dns_section_e dns_get_section(std::uint16_t index, dns_head_t *header);
 void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
                               std::size_t len, std::uint8_t *next);
 } // namespace dooked

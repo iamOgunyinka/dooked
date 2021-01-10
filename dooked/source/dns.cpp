@@ -411,13 +411,13 @@ std::string dns_raw_record_data2str(dns_alternate_record_t *record,
   return raw_buf;
 }
 
-dns_section dns_get_section(std::uint16_t index, dns_alternate_head_t *head) {
+dns_section_e dns_get_section(std::uint16_t index, dns_head_t *head) {
   if (index < head->header.ans_count) {
-    return dns_section::DNS_SECTION_ANSWER;
+    return dns_section_e::DNS_SECTION_ANSWER;
   } else if (index < head->header.ans_count + head->header.auth_count) {
-    return dns_section::DNS_SECTION_AUTHORITY;
+    return dns_section_e::DNS_SECTION_AUTHORITY;
   } else {
-    return dns_section::DNS_SECTION_ADDITIONAL;
+    return dns_section_e::DNS_SECTION_ADDITIONAL;
   }
 }
 
@@ -429,7 +429,7 @@ void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
     dns_alternate_record_t rec{};
     if (dns_parse_record_raw(begin, next, begin + len, &next, &rec)) {
       auto section = dns_get_section(i++, &packet.head);
-      if (section == dns_section::DNS_SECTION_ANSWER) {
+      if (section == dns_section_e::DNS_SECTION_ANSWER) {
         dns_record_t record{};
         record.name = dns_name2str(rec.name);
         record.type = rec.type;

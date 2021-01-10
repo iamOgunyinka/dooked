@@ -54,7 +54,7 @@ constexpr void set_question_class(unsigned char *t, V const &v) {
   set_16bit_value(t + 2, v);
 }
 
-enum class dns_section {
+enum class dns_section_e {
   DNS_SECTION_QUESTION = 0,
   DNS_SECTION_ANSWER = 1,
   DNS_SECTION_AUTHORITY = 2,
@@ -107,7 +107,7 @@ enum class dns_record_type_e : std::uint16_t {
 };
 
 // http://www.tcpipguide.com/free/t_DNSMessageHeaderandQuestionSectionFormat.htm
-enum class dns_rcode {
+enum class dns_rcode_e {
   DNS_RCODE_NO_ERROR = 0,
   DNS_RCODE_FORMAT_ERR = 1,
   DNS_RCODE_SERVER_FAILED = 2,
@@ -145,7 +145,6 @@ struct dns_header_t {
   std::uint16_t q_count{};    // query count
   std::uint16_t ans_count{};  // answer count
   std::uint16_t auth_count{}; // authority count
-  std::uint16_t add_count{};  // additional information count
 };
 
 } // namespace dooked

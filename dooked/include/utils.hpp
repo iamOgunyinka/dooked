@@ -112,5 +112,5 @@ std::string get_file_extension(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
 bool timet_to_string(std::string &output, std::size_t t, char const *format);
 std::uint16_t uint16_value(unsigned char const *buff);
-int dom_comprlen(ucstring_view const &, int);
+int dom_comprlen(ucstring_view_t const &, int);
 } // namespace dooked
