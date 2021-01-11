@@ -104,8 +104,10 @@ void create_query(std::string const &name, std::uint16_t record_type,
 
 custom_resolver_socket_t::custom_resolver_socket_t(
     net::io_context &io_context, domain_list_t &domain_list,
-    resolver_address_list_t &resolvers)
+    resolver_address_list_t &resolvers,
+    map_container_t<dns_record_t> &result_map)
     : io_{io_context}, names_{domain_list}, resolvers_{resolvers},
+      result_map_{result_map},
       supported_dns_record_size_{
           dns_supported_record_type_t::supported_types.size()} {}
 
@@ -128,7 +130,6 @@ void custom_resolver_socket_t::send_next_request() {
     create_query(name_, query_type, query_id_, send_buffer_);
     send_network_request();
   } catch (empty_container_exception_t const &e) {
-    spdlog::error(e.what());
   } catch (bad_name_exception_t const &other) {
     spdlog::error(other.what());
   }
@@ -140,21 +141,11 @@ void custom_resolver_socket_t::send_network_request() {
   }
   udp_stream_->async_send_to(
       net::buffer(send_buffer_.data(), send_buffer_.size()),
-      current_resolver_.ep, 0, [this](auto const, auto const s) {
-#ifdef _DEBUG
-        spdlog::info("Data sent: {}", s);
-#endif // _DEBUG
-        on_data_sent();
-      });
+      current_resolver_.ep, 0,
+      [this](auto const, auto const s) { on_data_sent(); });
 }
 
-void custom_resolver_socket_t::on_data_sent() {
-#ifdef _DEBUG
-  spdlog::info("Receiving network data");
-#endif // _DEBUG
-
-  return receive_network_data();
-}
+void custom_resolver_socket_t::on_data_sent() { return receive_network_data(); }
 
 void custom_resolver_socket_t::receive_network_data() {
   recv_buffer_.clear();
@@ -169,7 +160,7 @@ void custom_resolver_socket_t::receive_network_data() {
       [this](boost::system::error_code const err_code,
              std::size_t const bytes_received) {
 #ifdef _DEBUG
-        spdlog::info("Data received. Bytes received: {}", bytes_received);
+  // spdlog::info("Data received. Bytes received: {}", bytes_received);
 #endif // _DEBUG
         if (bytes_received == 0 || err_code == net::error::operation_aborted) {
           udp_stream_.reset();
@@ -224,6 +215,22 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
     return dns_record_type_e::DNS_REC_UNDEFINED;
   }
   return supported_types[++last_processed_dns_index_];
+}
+
+void custom_resolver_socket_t::serialize_packet(dns_packet_t const &packet) {
+  if (packet.body.answers.empty()) {
+#ifdef _DEBUG
+    if (auto &questions = packet.head.questions; !questions.empty()) {
+      auto const type = dns_record_type2str(packet.head.questions[0].type);
+      spdlog::info("No answer for: {}", type);
+    }
+#endif
+    return;
+  }
+  auto &answers = packet.body.answers;
+  for (auto const &answer : answers) {
+    result_map_.append(name_, answer);
+  }
 }
 
 std::uint16_t uint16_value(unsigned char const *buff) {
@@ -285,23 +292,6 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff,
   packet.body.answers.reserve(header.ans_count);
   auto rdata = buff.data();
   dns_extract_query_result(packet, rdata, buffer_len, rdata + pos);
-}
-
-void serialize_packet(dns_packet_t const &packet) {
-  if (packet.body.answers.empty()) {
-#ifdef _DEBUG
-    if (auto &questions = packet.head.questions; !questions.empty()) {
-      auto const type = dns_record_type2str(packet.head.questions[0].type);
-      spdlog::info("No answer for: {}", type);
-    }
-#endif
-    return;
-  }
-  auto &answers = packet.body.answers;
-  for (auto const &answer : answers) {
-    spdlog::info("Domain name: {}, RData: {}, Type: {}, TTL: {}", answer.name,
-                 answer.rdata, dns_record_type2str(answer.type), answer.ttl);
-  }
 }
 
 std::string rcode_to_string(dns_rcode_e const rcode) {

@@ -145,6 +145,301 @@ std::string dns_record_type2str(dns_record_type_e type) {
   }
   }
 }
+
+dns_record_type_e dns_str_to_record_type(std::string const &str) {
+  // Performance is important here because we may want to use this when reading
+  // large numbers of DNS queries from a file.
+
+  switch (tolower(str[0])) {
+  case 'a':
+    switch (tolower(str[1])) {
+    case 0:
+      return dns_record_type_e::DNS_REC_A;
+    case 'a':
+      if (tolower(str[2]) == 'a' && tolower(str[3]) == 'a' && str[4] == 0) {
+        return dns_record_type_e::DNS_REC_AAAA;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'f':
+      if (tolower(str[2]) == 's' && tolower(str[3]) == 'd' &&
+          tolower(str[4]) == 'b' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_AFSDB;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'n':
+      if (tolower(str[2]) == 'y' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_ANY;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'p':
+      if (tolower(str[2]) == 'l' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_APL;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'c':
+    switch (tolower(str[1])) {
+    case 'a':
+      if (tolower(str[2]) == 'a' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_CAA;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'd':
+      switch (tolower(str[2])) {
+      case 's':
+        if (str[3] == 0) {
+          return dns_record_type_e::DNS_REC_CDS;
+        }
+        return dns_record_type_e::DNS_REC_INVALID;
+      case 'n':
+        if (tolower(str[3]) == 's' && tolower(str[4]) == 'k' &&
+            tolower(str[5]) == 'e' && tolower(str[6]) == 'y' && str[7] == 0) {
+          return dns_record_type_e::DNS_REC_CDNSKEY;
+        }
+      default:
+        return dns_record_type_e::DNS_REC_INVALID;
+      }
+    case 'e':
+      if (tolower(str[2]) == 'r' && tolower(str[3]) == 't' && str[4] == 0) {
+        return dns_record_type_e::DNS_REC_CERT;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'n':
+      if (tolower(str[2]) == 'a' && tolower(str[3]) == 'm' &&
+          tolower(str[4]) == 'e' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_CNAME;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'd':
+    switch (tolower(str[1])) {
+    case 'h':
+      if (tolower(str[2]) == 'c' && tolower(str[3]) == 'i' &&
+          tolower(str[4]) == 'd' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_DHCID;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'l':
+      if (tolower(str[2]) == 'v' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_DLV;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'n':
+      switch (tolower(str[2])) {
+      case 'a':
+        if (tolower(str[3]) == 'm' && tolower(str[4]) == 'e' && str[5] == 0) {
+          return dns_record_type_e::DNS_REC_DNAME;
+        }
+        return dns_record_type_e::DNS_REC_INVALID;
+      case 's':
+        if (tolower(str[3]) == 'k' && tolower(str[4]) == 'e' &&
+            tolower(str[5]) == 'y' && str[6] == 0) {
+          return dns_record_type_e::DNS_REC_DNSKEY;
+        }
+        return dns_record_type_e::DNS_REC_INVALID;
+      default:
+        return dns_record_type_e::DNS_REC_INVALID;
+      }
+    case 's':
+      if (str[2] == 0) {
+        return dns_record_type_e::DNS_REC_DS;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'h':
+    if (tolower(str[1]) == 'i' && tolower(str[2]) == 'p' && str[3] == 0) {
+      return dns_record_type_e::DNS_REC_HIP;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'i':
+    if (tolower(str[1]) == 'p' && tolower(str[2]) == 's' &&
+        tolower(str[3]) == 'e' && tolower(str[4]) == 'c' &&
+        tolower(str[5]) == 'k' && tolower(str[6]) == 'e' &&
+        tolower(str[7]) == 'y' && str[8] == 0) {
+      return dns_record_type_e::DNS_REC_IPSECKEY;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'k':
+    switch (tolower(str[1])) {
+    case 'e':
+      if (tolower(str[2]) == 'y' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_KEY;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'x':
+      if (str[2] == 0) {
+        return dns_record_type_e::DNS_REC_KX;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'l':
+    if (tolower(str[1]) == 'o' && tolower(str[2]) == 'c' && str[3] == 0) {
+      return dns_record_type_e::DNS_REC_LOC;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'm':
+    if (tolower(str[1]) == 'x' && str[2] == 0) {
+      return dns_record_type_e::DNS_REC_MX;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'n':
+    switch (tolower(str[1])) {
+    case 'a':
+      if (tolower(str[2]) == 'p' && tolower(str[3]) == 't' &&
+          tolower(str[4]) == 'r' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_NAPTR;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 's':
+      switch (tolower(str[2])) {
+      case 0:
+        return dns_record_type_e::DNS_REC_NS;
+      case 'e':
+        if (tolower(str[3]) == 'c') {
+          switch (tolower(str[4])) {
+          case 0:
+            return dns_record_type_e::DNS_REC_NSEC;
+          case '3':
+            if (str[5] == 0) {
+              return dns_record_type_e::DNS_REC_NSEC3;
+            }
+            if (tolower(str[5]) == 'p' && tolower(str[6]) == 'a' &&
+                tolower(str[7]) == 'r' && tolower(str[8]) == 'a' &&
+                tolower(str[9]) == 'm' && str[10] == 0) {
+              return dns_record_type_e::DNS_REC_NSEC3PARAM;
+            }
+            return dns_record_type_e::DNS_REC_INVALID;
+          default:
+            return dns_record_type_e::DNS_REC_INVALID;
+          }
+        }
+        return dns_record_type_e::DNS_REC_INVALID;
+      default:
+        return dns_record_type_e::DNS_REC_INVALID;
+      }
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'o':
+    if (tolower(str[1]) == 'p' && tolower(str[2]) == 'e' &&
+        tolower(str[3]) == 'n' && tolower(str[4]) == 'p' &&
+        tolower(str[5]) == 'g' && tolower(str[6]) == 'p' &&
+        tolower(str[7]) == 'k' && tolower(str[8]) == 'e' &&
+        tolower(str[9]) == 'y' && str[10] == 0) {
+      return dns_record_type_e::DNS_REC_OPENPGPKEY;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'p':
+    if (tolower(str[1]) == 't' && tolower(str[2]) == 'r' && str[3] == 0) {
+      return dns_record_type_e::DNS_REC_PTR;
+    }
+    return dns_record_type_e::DNS_REC_INVALID;
+  case 'r':
+    switch (tolower(str[1])) {
+    case 'p':
+      if (str[2] == 0) {
+        return dns_record_type_e::DNS_REC_RP;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'r':
+      if (tolower(str[2]) == 's' && tolower(str[3]) == 'i' &&
+          tolower(str[4]) == 'g' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_RRSIG;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 's':
+    switch (tolower(str[1])) {
+    case 'i':
+      if (tolower(str[2]) == 'g' && tolower(str[3]) == 0) {
+        return dns_record_type_e::DNS_REC_SIG;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'o':
+      if (tolower(str[2]) == 'a' && tolower(str[3]) == 0) {
+        return dns_record_type_e::DNS_REC_SOA;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'r':
+      if (tolower(str[2]) == 'v' && tolower(str[3]) == 0) {
+        return dns_record_type_e::DNS_REC_SRV;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 's':
+      if (tolower(str[2]) == 'h' && tolower(str[3]) == 'f' &&
+          tolower(str[4]) == 'p' && str[5] == 0) {
+        return dns_record_type_e::DNS_REC_SSHFP;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 't':
+    switch (tolower(str[1])) {
+    case 'a':
+      if (str[2] == 0) {
+        return dns_record_type_e::DNS_REC_TA;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'k':
+      if (tolower(str[2]) == 'e' && tolower(str[3]) == 'y' && str[4] == 0) {
+        return dns_record_type_e::DNS_REC_TKEY;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'l':
+      if (tolower(str[2]) == 's' && tolower(str[3]) == 'a' && str[4] == 0) {
+        return dns_record_type_e::DNS_REC_TLSA;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 's':
+      if (tolower(str[2]) == 'i' && tolower(str[3]) == 'g' && str[4] == 0) {
+        return dns_record_type_e::DNS_REC_TSIG;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    case 'x':
+      if (tolower(str[2]) == 't' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_TXT;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case 'u':
+    switch (tolower(str[1])) {
+    case 'r':
+      if (tolower(str[2]) == 'i' && str[3] == 0) {
+        return dns_record_type_e::DNS_REC_URI;
+      }
+      return dns_record_type_e::DNS_REC_INVALID;
+    default:
+      return dns_record_type_e::DNS_REC_INVALID;
+    }
+  case '0':
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+  case '8':
+  case '9':
+    return (dns_record_type_e)std::stoi(str);
+  default:
+    return dns_record_type_e::DNS_REC_INVALID;
+  }
+}
+
 bool parse_name(std::uint8_t const *begin, std::uint8_t const *buf,
                 std::uint8_t const *end, unsigned char *name, std::uint8_t *len,
                 std::uint8_t **next) {
@@ -296,7 +591,7 @@ std::string dns_name2str(static_string_t const &name) {
 
 std::string dns_raw_record_data2str(dns_alternate_record_t *record,
                                     std::uint8_t *begin, std::uint8_t *end) {
-  static constexpr int const raw_buf_size = 0xFFFF0;
+  static constexpr int const raw_buf_size = 0xFFFF;
   std::string raw_buf(raw_buf_size, '\0');
   auto buf = raw_buf.data();
   static_string_t name;
@@ -390,6 +685,7 @@ std::string dns_raw_record_data2str(dns_alternate_record_t *record,
     int written =
         sprintf(ptr, "%" PRIu8 " ", (std::uint8_t)(record->data.raw[0] >> 7));
     if (written < 0) {
+      raw_buf.clear();
       return raw_buf;
     }
     ptr += written;
@@ -408,6 +704,8 @@ std::string dns_raw_record_data2str(dns_alternate_record_t *record,
     dns_print_readable(&ptr, raw_buf_size, record->data.raw, record->rd_length);
     *ptr = 0;
   }
+  auto const len_ = strlen(raw_buf.c_str());
+  raw_buf.resize(len_);
   return raw_buf;
 }
 
@@ -431,10 +729,7 @@ void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
       auto section = dns_get_section(i++, &packet.head);
       if (section == dns_section_e::DNS_SECTION_ANSWER) {
         dns_record_t record{};
-        record.name = dns_name2str(rec.name);
         record.type = rec.type;
-        record.dns_class_ = rec.dns_class_;
-        record.rd_length = rec.rd_length;
         record.ttl = rec.ttl;
         record.rdata = dns_raw_record_data2str(&rec, begin, begin + len);
         packet.body.answers.push_back(std::move(record));

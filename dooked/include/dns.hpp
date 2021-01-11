@@ -45,12 +45,9 @@ struct dns_alternate_record_t {
 };
 
 struct dns_record_t {
-  std::string name{};
   std::string rdata{};
   dns_record_type_e type; // RR TYPE (2 octets)
-  uint16_t dns_class_{};  // RR CLASS codes(2 octets)
-  uint16_t rd_length{};   // length in octets of the RDATA field.
-  uint32_t ttl{};         // time to live(4 octets)
+  std::uint32_t ttl{};    // time to live(4 octets)
 };
 
 struct dns_body_t {
@@ -66,8 +63,9 @@ bool parse_name(std::uint8_t const *begin, std::uint8_t const *buf,
                 std::uint8_t const *end, unsigned char *name, std::uint8_t *len,
                 std::uint8_t **next);
 
+void trim_string(std::string &);
 std::string dns_record_type2str(dns_record_type_e type);
-
+dns_record_type_e dns_str_to_record_type(std::string const &str);
 bool dns_parse_record_raw(std::uint8_t *begin, std::uint8_t *buf,
                           std::uint8_t const *end, std::uint8_t **next,
                           dns_alternate_record_t *record);

@@ -18,7 +18,7 @@ void ucstring_t::resize(size_t const sz) {
   } else if (sz < capacity_) {
     auto *new_end = (data_ + sz);
     // zero the rest of the memory but maintain the capacity
-    if ((new_end < data_ + capacity_) && (*new_end != 0)) {
+    if ((new_end < (data_ + capacity_)) && (*new_end != 0)) {
       memset((void *)new_end, 0, (capacity_ - sz));
     }
   }
@@ -29,8 +29,8 @@ void ucstring_t::clean_up() {
   if (data_) {
     delete[] data_;
   }
-  len_ = 0;
   data_ = nullptr;
+  capacity_ = len_ = 0;
 }
 
 void ucstring_t::clear() { len_ = 0; }

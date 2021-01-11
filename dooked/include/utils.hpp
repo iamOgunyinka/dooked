@@ -3,9 +3,12 @@
 #include "spdlog/spdlog.h"
 #include "ucstring.hpp"
 #include <boost/asio/ip/udp.hpp>
+#include <boost/process.hpp>
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <json.hpp>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -15,7 +18,9 @@
 #include <vector>
 
 namespace dooked {
+
 using namespace fmt::v7;
+using json = nlohmann::json;
 
 template <typename T> using opt_list_t = std::optional<std::vector<T>>;
 
@@ -50,6 +55,32 @@ public:
     }
     return container_[index_++];
   }
+};
+
+// contains result for all searches.
+template <typename ValueType> class map_container_t {
+  std::map<std::string, std::vector<ValueType>> map_;
+  std::optional<std::mutex> opt_mutex_;
+
+public:
+  map_container_t(bool use_lock = false) : map_{}, opt_mutex_{} {
+    if (use_lock) {
+      opt_mutex_.emplace();
+    }
+  }
+  // needed by different threads
+  void append(std::string const &key, ValueType const &value) {
+    if (!opt_mutex_) {
+      map_[key].push_back(value);
+      return;
+    }
+    std::lock_guard<std::mutex> lock_g{*opt_mutex_};
+    map_[key].push_back(value);
+  }
+  // only used by main thread, after all "computations" has been
+  // done. There's no need for locks here.
+  auto &result() const { return map_; }
+  bool empty() const { return map_.empty(); }
 };
 
 using resolver_address_list_t = circular_queue_t<resolver_address_t>;
@@ -107,10 +138,93 @@ using opt_domain_list_t = std::optional<domain_list_t>;
 // free utility functions
 bool is_text_file(std::string const &file_extension);
 bool is_json_file(std::string const &file_extension);
-opt_list_t<std::string> get_names(std::string const &filename);
+
 std::string get_file_extension(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
 bool timet_to_string(std::string &output, std::size_t t, char const *format);
 std::uint16_t uint16_value(unsigned char const *buff);
 int dom_comprlen(ucstring_view_t const &, int);
+void trim_string(std::string &);
+std::string get_filepath(std::string const &filename);
+
+namespace detail {
+
+template <typename T>
+opt_list_t<T> read_text_file(std::filesystem::path const &file_path) {
+  std::ifstream input_file(file_path);
+  if (!input_file) {
+    return std::nullopt;
+  }
+  std::vector<T> domain_names{};
+  std::string line{};
+  while (std::getline(input_file, line)) {
+    line = boost::trim_copy(line);
+    if (line.empty()) {
+      continue;
+    }
+    domain_names.push_back({line});
+  }
+  return domain_names;
+}
+
+template <typename T>
+opt_list_t<T> read_json_file(std::filesystem::path const &file_path) {
+  std::ifstream input_file(file_path);
+  if (!input_file) {
+    return std::nullopt;
+  }
+  auto const file_size = std::filesystem::file_size(file_path);
+  std::vector<char> file_buffer(file_size);
+  input_file.read(&file_buffer[0], file_size);
+  std::vector<T> result{};
+
+  try {
+
+    json json_content = json::parse(file_buffer.cbegin(), file_buffer.cend());
+    auto object_root = json_content.get<json::object_t>();
+    auto const result_list = object_root["result"].get<json::array_t>();
+    for (auto const &result_item : result_list) {
+      auto json_object = result_item.get<json::object_t>();
+      for (auto const json_item : json_object) {
+        std::string const domain_name = json_item.first;
+        auto const domain_detail_list = json_item.second.get<json::array_t>();
+        for (auto const &domain_detail : domain_detail_list) {
+          auto domain_object = domain_detail.get<json::object_t>();
+          result.push_back(T::serialize(domain_name, domain_object));
+        }
+      }
+    }
+  } catch (std::exception const &e) {
+    spdlog::error(e.what());
+    return std::nullopt;
+  }
+  return result;
+}
+} // namespace detail
+
+template <typename T> opt_list_t<T> get_names(std::string const &filename) {
+  if (filename.empty()) { // use stdin
+    std::string domain_name{};
+    std::vector<T> domain_names;
+    while (std::getline(std::cin, domain_name)) {
+      domain_names.push_back({domain_name});
+    }
+    return domain_names;
+  }
+  std::filesystem::path const file{filename};
+  if (!std::filesystem::exists(file)) {
+    return std::nullopt;
+  }
+  auto const file_extension{get_file_extension(file)};
+  if (is_text_file(file_extension)) {
+    return detail::read_text_file<T>(file);
+  } else if (is_json_file(file_extension)) {
+    if constexpr (!std::is_same_v<T, std::string>) {
+      return detail::read_json_file<T>(file);
+    }
+  }
+  // if file extension/type cannot be determined, read as TXT file
+  return detail::read_text_file<T>(file);
+}
+
 } // namespace dooked

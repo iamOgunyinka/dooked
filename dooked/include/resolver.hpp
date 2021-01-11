@@ -20,6 +20,7 @@ class custom_resolver_socket_t {
   std::optional<net::steady_timer> timer_;
   domain_list_t &names_;
   resolver_address_list_t &resolvers_;
+  map_container_t<dns_record_t> &result_map_;
   resolver_address_t current_resolver_{};
 
 private:
@@ -41,17 +42,18 @@ private:
   void on_data_sent();
   void on_data_received(boost::system::error_code, std::size_t);
   void send_next_request();
+  void serialize_packet(dns_packet_t const &);
 
 public:
   custom_resolver_socket_t(net::io_context &, domain_list_t &,
-                           resolver_address_list_t &);
+                           resolver_address_list_t &,
+                           map_container_t<dns_record_t> &);
   void start();
 };
 
 void create_query(std::string const &name, std::uint16_t type, std::uint16_t id,
                   ucstring_t &bufp);
 
-void parse_dns_response(dns_packet_t &, ucstring_t &, int );
-void serialize_packet(dns_packet_t const &);
+void parse_dns_response(dns_packet_t &, ucstring_t &, int);
 std::string rcode_to_string(dns_rcode_e);
 } // namespace dooked

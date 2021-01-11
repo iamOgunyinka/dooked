@@ -1,6 +1,4 @@
 #include "utils.hpp"
-#include <boost/process.hpp>
-#include <iostream>
 #include <random>
 
 namespace dooked {
@@ -39,6 +37,15 @@ std::string get_file_extension(std::filesystem::path const &file_path) {
 #endif
 }
 
+void trim_string(std::string &str) { boost::trim(str); }
+
+std::string get_filepath(std::string const &filename) {
+  if (filename.empty()) {
+    return {};
+  }
+  return std::filesystem::path(filename).replace_extension().string();
+}
+
 opt_list_t<std::string> read_text_file(std::filesystem::path const &file_path) {
   std::ifstream input_file(file_path);
   if (!input_file) {
@@ -57,6 +64,24 @@ opt_list_t<std::string> read_text_file(std::filesystem::path const &file_path) {
 }
 
 opt_list_t<std::string> read_json_file(std::filesystem::path const &file_path) {
+  std::ifstream input_file(file_path);
+  if (!input_file) {
+    return std::nullopt;
+  }
+  auto const file_size = std::filesystem::file_size(file_path);
+  std::vector<char> file_buffer(file_size);
+  input_file.read(&file_buffer[0], file_size);
+
+  try {
+    json json_content = json::parse(file_buffer.cbegin(), file_buffer.cend());
+    auto object_root = json_content.get<json::object_t>();
+    auto const result_list = object_root["result"].get<json::array_t>();
+    for (auto const &result_item : result_list) {
+    }
+  } catch (std::exception const &e) {
+    spdlog::error(e.what());
+    return std::nullopt;
+  }
   return {};
 }
 

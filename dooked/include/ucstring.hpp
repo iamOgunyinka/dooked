@@ -3,8 +3,8 @@
 namespace dooked {
 
 /*
-we need a unsigned char string type(ucstring_t) that doesn't 
-automatically append a '\0' after the sequence. It also try 
+we need a unsigned char string type(ucstring_t) that doesn't
+automatically append a '\0' after the sequence. It also try
 to avoid as many (re-)allocations as much as it can.
 */
 
