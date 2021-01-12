@@ -30,6 +30,9 @@
     <ClCompile Include="source\dns.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\preprocessor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\utils.hpp">
@@ -45,6 +48,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\tdefines.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\preprocessor.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

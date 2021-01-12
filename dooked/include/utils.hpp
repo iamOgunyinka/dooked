@@ -2,8 +2,8 @@
 
 #include "spdlog/spdlog.h"
 #include "ucstring.hpp"
-#include <boost/asio/ip/udp.hpp>
-#include <boost/process.hpp>
+#include <asio/ip/udp.hpp>
+//#include <boost/process.hpp>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -37,7 +38,7 @@ struct cli_args_t {
 };
 
 struct resolver_address_t {
-  boost::asio::ip::udp::endpoint ep{};
+  asio::ip::udp::endpoint ep{};
 };
 
 template <typename T> class circular_queue_t {
@@ -135,17 +136,21 @@ public:
 
 using domain_list_t = synced_queue_t<std::string>;
 using opt_domain_list_t = std::optional<domain_list_t>;
+
 // free utility functions
 bool is_text_file(std::string const &file_extension);
 bool is_json_file(std::string const &file_extension);
-
-std::string get_file_extension(std::filesystem::path const &file_path);
+void trim(std::string &s);
+std::string trim_copy(std::string s);
+std::string get_file_type(std::filesystem::path const &file_path);
 std::uint16_t get_random_integer();
 bool timet_to_string(std::string &output, std::size_t t, char const *format);
 std::uint16_t uint16_value(unsigned char const *buff);
 int dom_comprlen(ucstring_view_t const &, int);
 void trim_string(std::string &);
 std::string get_filepath(std::string const &filename);
+void split_string(std::string const &str, std::vector<std::string> &cont,
+                  char delim);
 
 namespace detail {
 
@@ -158,7 +163,7 @@ opt_list_t<T> read_text_file(std::filesystem::path const &file_path) {
   std::vector<T> domain_names{};
   std::string line{};
   while (std::getline(input_file, line)) {
-    line = boost::trim_copy(line);
+    trim(line);
     if (line.empty()) {
       continue;
     }
@@ -215,7 +220,7 @@ template <typename T> opt_list_t<T> get_names(std::string const &filename) {
   if (!std::filesystem::exists(file)) {
     return std::nullopt;
   }
-  auto const file_extension{get_file_extension(file)};
+  auto const file_extension{get_file_type(file)};
   if (is_text_file(file_extension)) {
     return detail::read_text_file<T>(file);
   } else if (is_json_file(file_extension)) {

@@ -54,13 +54,6 @@ constexpr void set_question_class(unsigned char *t, V const &v) {
   set_16bit_value(t + 2, v);
 }
 
-enum class dns_section_e {
-  DNS_SECTION_QUESTION = 0,
-  DNS_SECTION_ANSWER = 1,
-  DNS_SECTION_AUTHORITY = 2,
-  DNS_SECTION_ADDITIONAL = 3
-};
-
 enum class dns_record_type_e : std::uint16_t {
   DNS_REC_INVALID = 0xFFFF, // Error code
   DNS_REC_UNDEFINED = 0,

@@ -129,9 +129,9 @@ void custom_resolver_socket_t::send_next_request() {
     send_buffer_.clear();
     create_query(name_, query_type, query_id_, send_buffer_);
     send_network_request();
-  } catch (empty_container_exception_t const &e) {
-  } catch (bad_name_exception_t const &other) {
-    spdlog::error(other.what());
+  } catch (empty_container_exception_t const &) {
+  } catch (bad_name_exception_t const &except) {
+    spdlog::error(except.what());
   }
 }
 
@@ -157,8 +157,7 @@ void custom_resolver_socket_t::receive_network_data() {
 
   udp_stream_->async_receive_from(
       net::buffer(&recv_buffer_[0], receive_buf_size), *default_ep_,
-      [this](boost::system::error_code const err_code,
-             std::size_t const bytes_received) {
+      [this](net::error_code const err_code, std::size_t const bytes_received) {
 #ifdef _DEBUG
   // spdlog::info("Data received. Bytes received: {}", bytes_received);
 #endif // _DEBUG
@@ -179,8 +178,8 @@ void custom_resolver_socket_t::receive_network_data() {
   });
 }
 
-void custom_resolver_socket_t::on_data_received(
-    boost::system::error_code const ec, std::size_t const bytes_read) {
+void custom_resolver_socket_t::on_data_received(net::error_code const ec,
+                                                std::size_t const bytes_read) {
   if (bytes_read < sizeof_packet_header) {
     return send_next_request();
   }

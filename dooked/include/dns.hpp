@@ -77,7 +77,6 @@ bool dns_print_readable(char **buf, size_t buflen, unsigned char const *source,
 std::string dns_name2str(static_string_t const &name);
 std::string dns_raw_record_data2str(dns_alternate_record_t *record,
                                     std::uint8_t *begin, std::uint8_t *end);
-dns_section_e dns_get_section(std::uint16_t index, dns_head_t *header);
 void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
                               std::size_t len, std::uint8_t *next);
 } // namespace dooked

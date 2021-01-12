@@ -2,11 +2,14 @@
 
 #include "dns.hpp"
 #include "utils.hpp"
-#include <boost/beast/core/tcp_stream.hpp>
+#include <asio/ip/udp.hpp>
+#include <asio/steady_timer.hpp>
 #include <optional>
+#include <asio/error_code.hpp>
 
 namespace dooked {
-namespace net = boost::asio;
+namespace net = asio;
+
 using udp_stream_t = net::ip::udp::socket;
 
 struct dns_supported_record_type_t {
@@ -40,7 +43,7 @@ private:
   void receive_network_data();
   void establish_udp_connection();
   void on_data_sent();
-  void on_data_received(boost::system::error_code, std::size_t);
+  void on_data_received(net::error_code, std::size_t);
   void send_next_request();
   void serialize_packet(dns_packet_t const &);
 

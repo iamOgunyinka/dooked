@@ -117,7 +117,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\boost_1_75\include;D:\Visual Studio Projects\dooked\dooked\include;D:\Visual Studio Projects\dooked\dooked\third-party\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Visual Studio Projects\dooked\dooked\include;D:\Visual Studio Projects\dooked\dooked\third-party\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,12 +144,14 @@
   <ItemGroup>
     <ClCompile Include="dooked.cpp" />
     <ClCompile Include="source\dns.cpp" />
+    <ClCompile Include="source\preprocessor.cpp" />
     <ClCompile Include="source\resolver.cpp" />
     <ClCompile Include="source\ucstring.cpp" />
     <ClCompile Include="source\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\dns.hpp" />
+    <ClInclude Include="include\preprocessor.hpp" />
     <ClInclude Include="include\resolver.hpp" />
     <ClInclude Include="include\tdefines.hpp" />
     <ClInclude Include="include\ucstring.hpp" />
