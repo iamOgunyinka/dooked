@@ -68,14 +68,14 @@ std::string dns_record_type2str(dns_record_type_e type);
 dns_record_type_e dns_str_to_record_type(std::string const &str);
 bool dns_parse_record_raw(std::uint8_t *begin, std::uint8_t *buf,
                           std::uint8_t const *end, std::uint8_t **next,
-                          dns_alternate_record_t *record);
+                          dns_alternate_record_t &record);
 bool dns_parse_record(std::uint8_t *begin, std::uint8_t *buf,
                       std::uint8_t const *end, std::uint8_t **next,
-                      dns_alternate_record_t *record);
+                      dns_alternate_record_t &record);
 bool dns_print_readable(char **buf, size_t buflen, unsigned char const *source,
                         size_t len);
 std::string dns_name2str(static_string_t const &name);
-std::string dns_raw_record_data2str(dns_alternate_record_t *record,
+std::string dns_raw_record_data2str(dns_alternate_record_t &record,
                                     std::uint8_t *begin, std::uint8_t *end);
 void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
                               std::size_t len, std::uint8_t *next);

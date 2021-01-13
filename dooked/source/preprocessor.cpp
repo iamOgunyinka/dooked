@@ -1,10 +1,29 @@
 #include "preprocessor.hpp"
 #include <asio/io_context.hpp>
 #include <asio/thread_pool.hpp>
+#include <random>
 #include <set>
 #include <thread>
 
 namespace dooked {
+char get_random_char() {
+  static std::random_device rd{};
+  static std::mt19937 gen{rd()};
+  static std::uniform_int_distribution<> uid(0, 52);
+  static char const *all_alphas =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+  return all_alphas[uid(gen)];
+}
+
+std::string get_random_string(std::uint16_t const length) {
+  std::string result{};
+  result.reserve(length);
+  for (std::size_t i = 0; i != length; ++i) {
+    result.push_back(get_random_char());
+  }
+  return result;
+}
+
 void to_json(json &j, dns_record_t const &record) {
   j = json{{"ttl", record.ttl},
            {"type", dns_record_type2str(record.type)},
@@ -53,6 +72,94 @@ void thread_functor(asio::io_context &io_context, runtime_args_t &rt_args,
     sockets[i]->start();
   }
   io_context.run();
+}
+
+bool process_text_file(std::string const &input_filename,
+                       runtime_args_t &rt_args) {
+  auto domain_names = get_names<std::string>(input_filename);
+  if (domain_names && !domain_names->empty()) {
+    rt_args.names.emplace();
+    for (auto const &domain_name : *domain_names) {
+      rt_args.names->push_back({domain_name});
+    }
+  } else {
+    spdlog::error("There was an error trying to get input file");
+    return false;
+  }
+  return true;
+}
+
+bool process_json_file(std::string const &input_filename,
+                       runtime_args_t &rt_args) {
+  rt_args.previous_data =
+      get_names<json_data_t>(input_filename, file_type_e::json_type);
+  auto &previous_records = rt_args.previous_data;
+  if (previous_records && !previous_records->empty()) {
+    std::set<std::string> unique_names{};
+    for (auto const &domain_name : *previous_records) {
+      unique_names.insert(domain_name.domain_name);
+    }
+    rt_args.names.emplace();
+    for (auto const &name : unique_names) {
+      rt_args.names->push_back(name);
+    }
+  } else {
+    spdlog::error("There was an error trying to get input file");
+    return false;
+  }
+  return true;
+}
+
+// most likely from stdin
+bool determine_unknown_file(cli_args_t const &cli_args,
+                            runtime_args_t &rt_args) {
+  bool const using_stdin = cli_args.input_filename.empty();
+  if (!using_stdin) {
+    return false;
+  }
+  auto const filename = std::filesystem::temp_directory_path() /
+                        get_random_string(get_random_integer());
+  std::ofstream temp_file{filename};
+  if (!temp_file) {
+    spdlog::error("unable to open temporary file");
+    return false;
+  }
+  std::string line{};
+  while (std::getline(std::cin, line)) {
+    temp_file << line;
+  }
+  auto const file_type = get_file_type(filename);
+  std::error_code ec{};
+  // read the file and remove the temporary file thereafter
+  if (is_text_file(file_type)) {
+    return (process_text_file(filename.string(), rt_args) &&
+            std::filesystem::remove(filename, ec));
+  } else if (is_json_file) {
+    return process_json_file(filename.string(), rt_args) &&
+           std::filesystem::remove(filename, ec);
+  }
+  return false;
+}
+
+bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
+  bool const using_stdin = cli_args.input_filename.empty();
+  if (using_stdin) {
+    auto const file_type = static_cast<file_type_e>(cli_args.file_type);
+    if (file_type == file_type_e::txt_type) {
+      return process_text_file(cli_args.input_filename, rt_args);
+    } else if (file_type == file_type_e::json_type) {
+      return process_json_file(cli_args.input_filename, rt_args);
+    }
+    return determine_unknown_file(cli_args, rt_args);
+  }
+
+  auto const file_type = get_file_type(cli_args.input_filename);
+  if (is_text_file(file_type)) {
+    return process_text_file(cli_args.input_filename, rt_args);
+  } else if (is_json_file) {
+    return process_json_file(cli_args.input_filename, rt_args);
+  }
+  return false;
 }
 
 void start_name_checking(runtime_args_t &&rt_args) {
@@ -110,37 +217,10 @@ void run_program(cli_args_t const &cli_args) {
       return spdlog::error("Unable to read file content");
     }
   }
-#ifdef _DEBUG
-  spdlog::info("Total resolvers: {}", resolver_strings.size());
-#endif // _DEBUG
 
   // read input file
-  if (is_text_file(cli_args.input_filename) ||
-      cli_args.input_filename.empty()) {
-    auto domain_names = get_names<std::string>(cli_args.input_filename);
-    if (domain_names && !domain_names->empty()) {
-      rt_args.names.emplace();
-      for (auto const &domain_name : *domain_names) {
-        rt_args.names->push_back({domain_name});
-      }
-    } else {
-      return spdlog::error("There was an error trying to get input file");
-    }
-  } else if (is_json_file(cli_args.input_filename)) {
-    rt_args.previous_data = get_names<json_data_t>(cli_args.input_filename);
-    auto &previous_records = rt_args.previous_data;
-    if (previous_records && !previous_records->empty()) {
-      std::set<std::string> unique_names{};
-      for (auto const &domain_name : *previous_records) {
-        unique_names.insert(domain_name.domain_name);
-      }
-      rt_args.names.emplace();
-      for (auto const &name : unique_names) {
-        rt_args.names->push_back(name);
-      }
-    } else {
-      return spdlog::error("There was an error trying to get input file");
-    }
+  if (!read_input_file(cli_args, rt_args)) {
+    return;
   }
   // try opening an output file
   {

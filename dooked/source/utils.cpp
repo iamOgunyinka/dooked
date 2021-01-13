@@ -102,68 +102,6 @@ std::string get_filepath(std::string const &filename) {
   return std::filesystem::path(filename).replace_extension().string();
 }
 
-opt_list_t<std::string> read_text_file(std::filesystem::path const &file_path) {
-  std::ifstream input_file(file_path);
-  if (!input_file) {
-    return std::nullopt;
-  }
-  std::vector<std::string> domain_names{};
-  std::string line{};
-  while (std::getline(input_file, line)) {
-    trim(line);
-    if (line.empty()) {
-      continue;
-    }
-    domain_names.push_back({line});
-  }
-  return domain_names;
-}
-
-opt_list_t<std::string> read_json_file(std::filesystem::path const &file_path) {
-  std::ifstream input_file(file_path);
-  if (!input_file) {
-    return std::nullopt;
-  }
-  auto const file_size = std::filesystem::file_size(file_path);
-  std::vector<char> file_buffer(file_size);
-  input_file.read(&file_buffer[0], file_size);
-
-  try {
-    json json_content = json::parse(file_buffer.cbegin(), file_buffer.cend());
-    auto object_root = json_content.get<json::object_t>();
-    auto const result_list = object_root["result"].get<json::array_t>();
-    for (auto const &result_item : result_list) {
-    }
-  } catch (std::exception const &e) {
-    spdlog::error(e.what());
-    return std::nullopt;
-  }
-  return {};
-}
-
-opt_list_t<std::string> get_names(std::string const &filename) {
-  if (filename.empty()) { // use stdin
-    std::string domain_name{};
-    std::vector<std::string> domain_names;
-    while (std::getline(std::cin, domain_name)) {
-      domain_names.push_back({domain_name});
-    }
-    return domain_names;
-  }
-  std::filesystem::path const file{filename};
-  if (!std::filesystem::exists(file)) {
-    return std::nullopt;
-  }
-  auto const file_extension{get_file_type(file)};
-  if (is_text_file(file_extension)) {
-    return read_text_file(file);
-  } else if (is_json_file(file_extension)) {
-    return read_json_file(file);
-  }
-  // if file extension/type cannot be determined, read as TXT file
-  return read_text_file(file);
-}
-
 std::uint16_t get_random_integer() {
   static std::random_device rd{};
   static std::mt19937 gen{rd()};

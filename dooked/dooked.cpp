@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
                  "write result to output file");
   app.add_option(
       "-t,--file-type", cli_args.file_type,
-      "the file type used as input file: stdin=0(default), txt=1, json=2");
+      "the file type used as input file: (default)txt=0, txt=1, unknown=2");
   app.add_option(
       "-i,--input-file", cli_args.input_filename,
       "if not using stdin, this is the input file to use, type is deduceable "

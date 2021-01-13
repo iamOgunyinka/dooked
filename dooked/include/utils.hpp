@@ -25,7 +25,7 @@ using json = nlohmann::json;
 
 template <typename T> using opt_list_t = std::optional<std::vector<T>>;
 
-enum file_type_e { stdin_type, txt_type, json_type, unknown_type };
+enum class file_type_e { txt_type, json_type, unknown_type };
 
 struct cli_args_t {
   std::string resolver{}; // defaults to 8.8.8.8
@@ -33,7 +33,7 @@ struct cli_args_t {
   std::string output_filename{};
   std::string input_filename{};
 
-  int file_type = file_type_e::stdin_type;
+  int file_type = static_cast<int>(file_type_e::txt_type);
   bool include_date = false;
 };
 
@@ -172,20 +172,13 @@ opt_list_t<T> read_text_file(std::filesystem::path const &file_path) {
   return domain_names;
 }
 
-template <typename T>
-opt_list_t<T> read_json_file(std::filesystem::path const &file_path) {
-  std::ifstream input_file(file_path);
-  if (!input_file) {
-    return std::nullopt;
-  }
-  auto const file_size = std::filesystem::file_size(file_path);
-  std::vector<char> file_buffer(file_size);
-  input_file.read(&file_buffer[0], file_size);
+template <typename T, typename Iterator>
+opt_list_t<T> read_json_string(Iterator const begin, Iterator const end) {
   std::vector<T> result{};
 
   try {
 
-    json json_content = json::parse(file_buffer.cbegin(), file_buffer.cend());
+    json json_content = json::parse(begin, end);
     auto object_root = json_content.get<json::object_t>();
     auto const result_list = object_root["result"].get<json::array_t>();
     for (auto const &result_item : result_list) {
@@ -205,21 +198,65 @@ opt_list_t<T> read_json_file(std::filesystem::path const &file_path) {
   }
   return result;
 }
+
+template <typename T>
+opt_list_t<T> read_json_file(std::filesystem::path const &file_path) {
+  std::ifstream input_file(file_path);
+  if (!input_file) {
+    return std::nullopt;
+  }
+  auto const file_size = std::filesystem::file_size(file_path);
+  std::vector<char> file_buffer(file_size);
+  input_file.read(&file_buffer[0], file_size);
+  return read_json_string<T>(file_buffer.cbegin(), file_buffer.cend());
+}
+
 } // namespace detail
 
-template <typename T> opt_list_t<T> get_names(std::string const &filename) {
-  if (filename.empty()) { // use stdin
+template <typename T>
+opt_list_t<T> get_names(std::string const &filename,
+                        file_type_e const file_type = file_type_e::txt_type) {
+  bool const using_stdin = filename.empty();
+
+  // read line by line and send the result back as-is.
+  if (using_stdin && file_type == file_type_e::txt_type) { // use stdin
     std::string domain_name{};
     std::vector<T> domain_names;
     while (std::getline(std::cin, domain_name)) {
       domain_names.push_back({domain_name});
     }
     return domain_names;
+
+    // read line by line but parse the JSON result
+  } else if (using_stdin && file_type == file_type_e::json_type) {
+    std::ostringstream ss{};
+    std::string line{};
+    while (std::getline(std::cin, line)) {
+      ss << line;
+    }
+    auto const buffer{ss.str()};
+    if constexpr (!std::is_same_v<T, std::string>) {
+      return detail::read_json_string<T>(buffer.cbegin(),
+                                                   buffer.cend());
+    }
+    return std::nullopt;
+  } else if (using_stdin) {
+    return std::nullopt;
   }
+
   std::filesystem::path const file{filename};
   if (!std::filesystem::exists(file)) {
     return std::nullopt;
   }
+  switch (file_type) {
+  case file_type_e::txt_type:
+    return detail::read_text_file<T>(file);
+  case file_type_e::json_type:
+    if constexpr (!std::is_same_v<T, std::string>) {
+      return detail::read_json_file<T>(file);
+    }
+  }
+  // if we are here, we were unable to determine the type
   auto const file_extension{get_file_type(file)};
   if (is_text_file(file_extension)) {
     return detail::read_text_file<T>(file);
