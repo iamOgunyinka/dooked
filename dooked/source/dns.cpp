@@ -53,6 +53,8 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
              ? dst
              : NULL;
 }
+#else
+#include <string.h> // for memcpy, memset etc
 #endif // _WIN32
 
 namespace dooked {

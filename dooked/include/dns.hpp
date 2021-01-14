@@ -5,6 +5,10 @@
 #pragma warning(disable : 4996)
 #endif
 
+#ifndef _WIN32
+#include <arpa/inet.h> // for in_addr and in6_addr
+#endif
+
 #include "tdefines.hpp"
 #include "ucstring.hpp"
 

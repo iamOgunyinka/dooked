@@ -86,18 +86,18 @@ public:
 
 using resolver_address_list_t = circular_queue_t<resolver_address_t>;
 
-struct empty_container_exception_t : std::exception {
-  empty_container_exception_t() : std::exception{} {}
+struct empty_container_exception_t : std::runtime_error {
+  empty_container_exception_t() : std::runtime_error{"empty container"} {}
 };
 
-struct invalid_dns_response_t : std::exception {
-  invalid_dns_response_t() : std::exception{} {}
-  invalid_dns_response_t(char const *w) : std::exception{w} {}
+struct invalid_dns_response_t : std::runtime_error {
+  invalid_dns_response_t() : std::runtime_error{"invalid dns response"} {}
+  invalid_dns_response_t(char const *w) : std::runtime_error{w} {}
 };
 
-struct general_exception_t : std::exception {
-  general_exception_t(char const *w) : std::exception{w} {}
-  general_exception_t(std::string const &w) : std::exception{w.c_str()} {}
+struct general_exception_t : std::runtime_error {
+  general_exception_t(char const *w) : std::runtime_error{w} {}
+  general_exception_t(std::string const &w) : std::runtime_error{w.c_str()} {}
 };
 
 struct bad_name_exception_t : std::runtime_error {
@@ -192,7 +192,7 @@ opt_list_t<T> read_json_string(Iterator const begin, Iterator const end) {
         }
       }
     }
-  } catch (std::exception const &e) {
+  } catch (std::runtime_error const &e) {
     spdlog::error(e.what());
     return std::nullopt;
   }
@@ -236,8 +236,7 @@ opt_list_t<T> get_names(std::string const &filename,
     }
     auto const buffer{ss.str()};
     if constexpr (!std::is_same_v<T, std::string>) {
-      return detail::read_json_string<T>(buffer.cbegin(),
-                                                   buffer.cend());
+      return detail::read_json_string<T>(buffer.cbegin(), buffer.cend());
     }
     return std::nullopt;
   } else if (using_stdin) {

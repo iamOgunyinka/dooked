@@ -35,6 +35,11 @@ void compare_results(std::vector<json_data_t> const &previous_result,
 #ifdef _DEBUG
   spdlog::info("Trying to compare old with new result");
 #endif // _DEBUG
+  // previous data is already sorted.
+  // current data is a pre-sorted data.
+  auto const &current_data_map = current_result.result();
+  for (auto iter = previous_result.begin(); iter < previous_result.end();) {
+  }
 }
 
 void write_json_result(map_container_t<dns_record_t> const &result_map,
@@ -192,6 +197,27 @@ void start_name_checking(runtime_args_t &&rt_args) {
 
   // compare old with new result
   if (rt_args.previous_data) {
+    auto &previous_data = *rt_args.previous_data;
+    std::sort(previous_data.begin(), previous_data.end(),
+              [](json_data_t const &a, json_data_t const &b) {
+                return a.domain_name < b.domain_name;
+              });
+
+    auto iter_start = previous_data.begin();
+    auto const iter_end = previous_data.end();
+    while (iter_start < iter_end) {
+      auto new_iter = std::upper_bound(
+          iter_start, iter_end, *iter_start,
+          [](json_data_t const &first, json_data_t const &second) {
+            return first.domain_name < second.domain_name;
+          });
+      std::sort(iter_start, new_iter,
+                [](json_data_t const &a, json_data_t const &b) {
+                  return a.query_type < b.query_type;
+                });
+      iter_start = new_iter;
+    }
+
     return compare_results(*rt_args.previous_data, result_map);
   }
 }

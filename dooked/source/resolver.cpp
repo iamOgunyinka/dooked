@@ -272,7 +272,11 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff,
   }
   auto const rcode = static_cast<dns_rcode_e>(header.rcode);
   if (rcode != dns_rcode_e::DNS_RCODE_NO_ERROR) {
-    return spdlog::error("Server response code: {}", rcode_to_string(rcode));
+    return
+#ifdef _DEBUG
+        spdlog::error("Server response code: {}", rcode_to_string(rcode))
+#endif // _DEBUG
+            ;
   }
   /* read question section */
   auto &questions = packet.head.questions;

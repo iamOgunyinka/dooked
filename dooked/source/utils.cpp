@@ -4,8 +4,12 @@
 #include <locale>
 #include <random>
 
-namespace dooked {
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif // _WIN32
 
+namespace dooked {
 // ============= the following code is copied directly from stackoverflow
 // https://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
 
@@ -75,22 +79,25 @@ std::string get_file_type(std::filesystem::path const &file_path) {
     return file_path.extension().string();
   }
 
+  std::string result{};
 #ifdef _WIN32
-  return {};
-#else // _WIN32
-
-  auto const command = "file -ib " + file_path.string();
-  boost::process::ipstream out{};
-  try {
-    boost::process::system(command, boost::process::std_out > out);
-  } catch (std::exception const &e) {
-    spdlog::error("Command: {}.\nException: {}", command, e.what());
+  // haven't figured what to do on Windows
+#else
+  std::string const command = "file -ib " + file_path.string();
+  auto file = popen(command.c_str(), "r");
+  if (!file) {
     return {};
   }
-  std::string console_output{};
-  std::getline(out, console_output);
-  return console_output;
+  char buffer[128]{};
+  while (!feof(file)) {
+    if (fgets(buffer, sizeof(buffer), file) == nullptr) {
+      break;
+    }
+    result += buffer;
+  }
+  pclose(file);
 #endif
+  return result;
 }
 
 void trim_string(std::string &str) { trim(str); }
