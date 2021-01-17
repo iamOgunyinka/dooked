@@ -2,10 +2,10 @@
 
 #include "dns.hpp"
 #include "utils.hpp"
+#include <asio/error_code.hpp>
 #include <asio/ip/udp.hpp>
 #include <asio/steady_timer.hpp>
 #include <optional>
-#include <asio/error_code.hpp>
 
 namespace dooked {
 namespace net = asio;
@@ -13,7 +13,7 @@ namespace net = asio;
 using udp_stream_t = net::ip::udp::socket;
 
 struct dns_supported_record_type_t {
-  static std::array<dns_record_type_e, 26> const supported_types;
+  static std::array<dns_record_type_e, 20> const supported_types;
 };
 
 class custom_resolver_socket_t {

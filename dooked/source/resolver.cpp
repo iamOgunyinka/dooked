@@ -3,21 +3,18 @@
 
 namespace dooked {
 
-std::array<dns_record_type_e, 26> const
+std::array<dns_record_type_e, 20> const
     dns_supported_record_type_t::supported_types{
-        dns_record_type_e::DNS_REC_A,        dns_record_type_e::DNS_REC_NS,
-        dns_record_type_e::DNS_REC_CNAME,    dns_record_type_e::DNS_REC_SOA,
-        dns_record_type_e::DNS_REC_PTR,      dns_record_type_e::DNS_REC_MX,
-        dns_record_type_e::DNS_REC_TXT,      dns_record_type_e::DNS_REC_AFSDB,
-        dns_record_type_e::DNS_REC_AAAA,     dns_record_type_e::DNS_REC_LOC,
-        dns_record_type_e::DNS_REC_SRV,      dns_record_type_e::DNS_REC_NAPTR,
-        dns_record_type_e::DNS_REC_DNAME,    dns_record_type_e::DNS_REC_APL,
-        dns_record_type_e::DNS_REC_IPSECKEY, dns_record_type_e::DNS_REC_CERT,
-        dns_record_type_e::DNS_REC_KEY,      dns_record_type_e::DNS_REC_DNAME,
-        dns_record_type_e::DNS_REC_SIG,      dns_record_type_e::DNS_REC_DNSKEY,
-        dns_record_type_e::DNS_REC_TKEY,     dns_record_type_e::DNS_REC_TLSA,
-        dns_record_type_e::DNS_REC_CAA,      dns_record_type_e::DNS_REC_URI,
-        dns_record_type_e::DNS_REC_CDNSKEY,  dns_record_type_e::DNS_REC_CDS};
+        dns_record_type_e::DNS_REC_A,     dns_record_type_e::DNS_REC_NS,
+        dns_record_type_e::DNS_REC_CNAME, dns_record_type_e::DNS_REC_SOA,
+        dns_record_type_e::DNS_REC_PTR,   dns_record_type_e::DNS_REC_MX,
+        dns_record_type_e::DNS_REC_TXT,   dns_record_type_e::DNS_REC_AFSDB,
+        dns_record_type_e::DNS_REC_AAAA,  dns_record_type_e::DNS_REC_LOC,
+        dns_record_type_e::DNS_REC_SRV,   dns_record_type_e::DNS_REC_NAPTR,
+        dns_record_type_e::DNS_REC_DNAME, dns_record_type_e::DNS_REC_APL,
+        dns_record_type_e::DNS_REC_CERT,  dns_record_type_e::DNS_REC_DNAME,
+        dns_record_type_e::DNS_REC_SIG,   dns_record_type_e::DNS_REC_DNSKEY,
+        dns_record_type_e::DNS_REC_URI,   dns_record_type_e::DNS_REC_CDNSKEY};
 
 void set_dns_header_value(ucstring_t::pointer q, std::uint16_t id) {
   set_qid(q, id);
@@ -164,9 +161,6 @@ void custom_resolver_socket_t::receive_network_data() {
   udp_stream_->async_receive_from(
       net::buffer(&recv_buffer_[0], receive_buf_size), *default_ep_,
       [this](net::error_code const err_code, std::size_t const bytes_received) {
-#ifdef _DEBUG
-  // spdlog::info("Data received. Bytes received: {}", bytes_received);
-#endif // _DEBUG
         if (bytes_received == 0 || err_code == net::error::operation_aborted) {
           udp_stream_.reset();
           return send_network_request();
@@ -211,7 +205,7 @@ void custom_resolver_socket_t::establish_udp_connection() {
 
 dns_record_type_e custom_resolver_socket_t::next_record_type() {
   auto &supported_types = dns_supported_record_type_t::supported_types;
-  if (supported_dns_record_size_ == -1) {
+  if (last_processed_dns_index_ == -1) {
     return supported_types[++last_processed_dns_index_];
   }
   // special case: done with current name, retrieve next one.
@@ -224,12 +218,6 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
 
 void custom_resolver_socket_t::serialize_packet(dns_packet_t const &packet) {
   if (packet.body.answers.empty()) {
-#ifdef _DEBUG
-    if (auto &questions = packet.head.questions; !questions.empty()) {
-      auto const type = dns_record_type2str(packet.head.questions[0].type);
-      spdlog::info("No answer for: {}", type);
-    }
-#endif
     return;
   }
   auto &answers = packet.body.answers;

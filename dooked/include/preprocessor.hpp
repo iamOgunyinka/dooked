@@ -8,17 +8,23 @@ struct json_data_t {
   std::string domain_name{};
   std::string rdata{};
   std::uint32_t ttl{};
-  dns_record_type_e query_type;
+  dns_record_type_e type;
 
   static json_data_t serialize(std::string const &d,
                                json::object_t &json_object) {
     json_data_t data{};
     data.domain_name = d;
-    data.query_type =
+    data.type =
         dns_str_to_record_type(json_object["type"].get<json::string_t>());
     data.rdata = json_object["info"].get<json::string_t>();
     data.ttl = json_object["ttl"].get<json::number_integer_t>();
     return data;
+  }
+};
+
+struct jd_domain_comparator_t {
+  bool operator()(json_data_t const &a, json_data_t const &b) const {
+    return a.domain_name < b.domain_name;
   }
 };
 

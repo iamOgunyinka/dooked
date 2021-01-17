@@ -37,8 +37,76 @@ void compare_results(std::vector<json_data_t> const &previous_result,
 #endif // _DEBUG
   // previous data is already sorted.
   // current data is a pre-sorted data.
-  auto const &current_data_map = current_result.result();
-  for (auto iter = previous_result.begin(); iter < previous_result.end();) {
+  auto const &current_data_map = current_result.cresult();
+  auto const end_iter = previous_result.cend();
+  auto const domain_comparator = jd_domain_comparator_t{};
+
+  for (auto iter = previous_result.cbegin(); iter < end_iter;) {
+    auto const current_find_iter = current_data_map.find(iter->domain_name);
+    if (current_find_iter == current_data_map.end()) {
+      continue;
+    }
+    auto const &current_domain_info_list = current_find_iter->second;
+    auto const last_elem_iter =
+        std::upper_bound(iter, end_iter, *iter, domain_comparator);
+    auto const previous_total_elem = std::distance(iter, last_elem_iter);
+    auto const current_total_elem = current_domain_info_list.size();
+
+    // something is missing
+    if (current_total_elem < previous_total_elem) {
+      for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
+        bool const found = std::binary_search(
+            current_domain_info_list.cbegin(), current_domain_info_list.cend(),
+            *start_iter, [](auto const &a, auto const &b) {
+              return a.type == b.type && a.rdata == b.rdata;
+            });
+        if (!found) {
+          spdlog::info("[{}][{}] missing.", iter->domain_name,
+                       dns_record_type2str(start_iter->type));
+        }
+      }
+      // information may have been changed
+    } else if (current_total_elem == previous_total_elem) {
+      std::vector<dns_record_t> newly_detected{};
+      for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
+        auto const eq_range = std::equal_range(
+            current_domain_info_list.begin(), current_domain_info_list.end(),
+            *start_iter,
+            [](auto const &a, auto const &b) { return a.type < b.type; });
+        auto const find_iter =
+            std::find_if(eq_range.first, eq_range.second,
+                         [&val = *start_iter](dns_record_t const &record) {
+                           return val.rdata == record.rdata;
+                         });
+        // one of the previous record wasn't found
+        if (find_iter == eq_range.second) {
+          if (std::distance(eq_range.first, eq_range.second) == 1) {
+            spdlog::info("[{}][{}] changed from `{}` to `{}`",
+                         iter->domain_name,
+                         dns_record_type2str(start_iter->type),
+                         start_iter->rdata, eq_range.first->rdata);
+          } else {
+            spdlog::info(
+                "[{}][{}] seems `{}` has been removed", iter->domain_name,
+                dns_record_type2str(start_iter->type), start_iter->rdata);
+          }
+        }
+      }
+    } else {
+      // or new information added
+      for (auto const &current_elem : current_domain_info_list) {
+        bool const found =
+            std::binary_search(iter, last_elem_iter, current_elem,
+                               [](auto const &a, auto const &b) {
+                                 return a.type == b.type && a.rdata == b.rdata;
+                               });
+        if (!found) {
+          spdlog::info("[{}][{}] added.", iter->domain_name,
+                       dns_record_type2str(current_elem.type));
+        }
+      }
+    }
+    iter = last_elem_iter;
   }
 }
 
@@ -53,7 +121,7 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   }
 
   json::array_t list;
-  for (auto const &result_pair : result_map.result()) {
+  for (auto const &result_pair : result_map.cresult()) {
     json::object_t object;
     object[result_pair.first] = result_pair.second;
     list.push_back(std::move(object));
@@ -68,10 +136,10 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
 
 void thread_functor(asio::io_context &io_context, runtime_args_t &rt_args,
                     map_container_t<dns_record_t> &result_map,
-                    int const socket_count) {
+                    std::size_t const socket_count) {
   std::vector<std::unique_ptr<custom_resolver_socket_t>> sockets{};
   sockets.resize(socket_count);
-  for (int i = 0; i < socket_count; ++i) {
+  for (std::size_t i = 0; i < socket_count; ++i) {
     sockets[i] = std::make_unique<custom_resolver_socket_t>(
         io_context, *rt_args.names, *rt_args.resolvers, result_map);
     sockets[i]->start();
@@ -139,7 +207,7 @@ bool determine_unknown_file(cli_args_t const &cli_args,
   if (is_text_file(file_type)) {
     return (process_text_file(filename.string(), rt_args) &&
             std::filesystem::remove(filename, ec));
-  } else if (is_json_file) {
+  } else if (is_json_file(file_type)) {
     return process_json_file(filename.string(), rt_args) &&
            std::filesystem::remove(filename, ec);
   }
@@ -161,7 +229,7 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
   auto const file_type = get_file_type(cli_args.input_filename);
   if (is_text_file(file_type)) {
     return process_text_file(cli_args.input_filename, rt_args);
-  } else if (is_json_file) {
+  } else if (is_json_file(file_type)) {
     return process_json_file(cli_args.input_filename, rt_args);
   }
   return false;
@@ -170,7 +238,7 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
 void start_name_checking(runtime_args_t &&rt_args) {
   auto const native_thread_count = (std::min)(
       rt_args.names->size(), (std::size_t)std::thread::hardware_concurrency());
-  asio::io_context io_context(native_thread_count);
+  asio::io_context io_context((int)native_thread_count);
 
   auto const max_open_sockets =
       (std::min)(rt_args.names->size(), (std::size_t)100);
@@ -198,11 +266,15 @@ void start_name_checking(runtime_args_t &&rt_args) {
   // compare old with new result
   if (rt_args.previous_data) {
     auto &previous_data = *rt_args.previous_data;
+
+    // sort the (domain)names in alphabetical order first
     std::sort(previous_data.begin(), previous_data.end(),
               [](json_data_t const &a, json_data_t const &b) {
-                return a.domain_name < b.domain_name;
+                return std::tie(a.domain_name, a.type) <
+                       std::tie(b.domain_name, b.type);
               });
-
+    /*
+    // then sort each (domain) names based on the record type(A, AAAA...)
     auto iter_start = previous_data.begin();
     auto const iter_end = previous_data.end();
     while (iter_start < iter_end) {
@@ -217,7 +289,15 @@ void start_name_checking(runtime_args_t &&rt_args) {
                 });
       iter_start = new_iter;
     }
+    */
 
+    auto &result = result_map.result();
+    for (auto &res : result) {
+      std::sort(res.second.begin(), res.second.end(),
+                [](dns_record_t const &a, dns_record_t const &b) {
+                  return std::tie(a.type, a.rdata) < std::tie(b.type, b.rdata);
+                });
+    }
     return compare_results(*rt_args.previous_data, result_map);
   }
 }
@@ -282,7 +362,7 @@ void run_program(cli_args_t const &cli_args) {
     rt_args.output_filename = std::move(filename);
   }
 
-  // convert strings to UDP endpoints( IP address
+  // convert strings to UDP endpoints
 #ifdef _DEBUG
   spdlog::info("Converting UDP endpoints");
 #endif // _DEBUG
@@ -317,6 +397,7 @@ void run_program(cli_args_t const &cli_args) {
     return spdlog::error(e.what());
   }
   rt_args.resolvers.emplace(std::move(resolver_eps));
+
   return start_name_checking(std::move(rt_args));
 }
 

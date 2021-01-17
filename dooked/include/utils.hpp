@@ -80,7 +80,8 @@ public:
   }
   // only used by main thread, after all "computations" has been
   // done. There's no need for locks here.
-  auto &result() const { return map_; }
+  auto &cresult() const { return map_; }
+  auto &result() { return map_; }
   bool empty() const { return map_.empty(); }
 };
 
