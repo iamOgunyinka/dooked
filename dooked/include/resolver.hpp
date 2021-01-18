@@ -54,9 +54,9 @@ public:
   void start();
 };
 
+void parse_dns_response(dns_packet_t &, ucstring_t &);
 void create_query(std::string const &name, std::uint16_t type, std::uint16_t id,
                   ucstring_t &bufp);
 
-void parse_dns_response(dns_packet_t &, ucstring_t &, int);
 std::string rcode_to_string(dns_rcode_e);
 } // namespace dooked

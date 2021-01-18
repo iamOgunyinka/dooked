@@ -186,7 +186,7 @@ void custom_resolver_socket_t::on_data_received(net::error_code const ec,
   recv_buffer_.resize(bytes_read);
   dns_packet_t packet{};
   try {
-    parse_dns_response(packet, recv_buffer_, query_id_);
+    parse_dns_response(packet, recv_buffer_);
     serialize_packet(packet);
   } catch (std::exception const &e) {
     spdlog::error(e.what());
@@ -217,12 +217,16 @@ dns_record_type_e custom_resolver_socket_t::next_record_type() {
 }
 
 void custom_resolver_socket_t::serialize_packet(dns_packet_t const &packet) {
-  if (packet.body.answers.empty()) {
+  if (packet.body.answers.empty() || packet.head.questions.empty()) {
     return;
   }
-  auto &answers = packet.body.answers;
-  for (auto const &answer : answers) {
-    result_map_.append(name_, answer);
+  auto &temp_name = packet.head.questions[0].dns_name;
+  auto const len = (temp_name.name[temp_name.name_length - 1] == '.')
+                       ? temp_name.name_length - 1
+                       : temp_name.name_length;
+  std::string const name((char const *)temp_name.name, len);
+  for (auto const &answer : packet.body.answers) {
+    result_map_.append(name, answer);
   }
 }
 
@@ -230,8 +234,7 @@ std::uint16_t uint16_value(unsigned char const *buff) {
   return buff[0] * 256 + buff[1];
 }
 
-void parse_dns_response(dns_packet_t &packet, ucstring_t &buff,
-                        int const query_id) {
+void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
   int const buffer_len = buff.size();
   if (buffer_len < 12) {
     throw invalid_dns_response_t("Corrupted DNS packet: too small for header");
@@ -253,42 +256,36 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff,
   header.ans_count = uint16_value(data + 6);
   header.auth_count = uint16_value(data + 8);
 
-  if (query_id != header.id) {
-    return spdlog::error(
-        "The response sent by the server isn't what we asked for: {} => {}",
-        header.id, query_id);
-  }
   auto const rcode = static_cast<dns_rcode_e>(header.rcode);
   if (rcode != dns_rcode_e::DNS_RCODE_NO_ERROR) {
     return
 #ifdef _DEBUG
-        spdlog::error("Server response code: {}", rcode_to_string(rcode))
+        spdlog::error("Response code: {}", rcode_to_string(rcode))
 #endif // _DEBUG
             ;
   }
-  /* read question section */
-  auto &questions = packet.head.questions;
-  int pos = 12;
-  for (int t = 0; t < header.q_count; t++) {
-    if (pos >= buffer_len) {
-      throw invalid_dns_response_t("Message too small for question item!");
-    }
-    int const x = dom_comprlen(buff, pos);
-    if (pos + x + 4 > buffer_len) {
-      throw invalid_dns_response_t("Message too small for question item!");
-    }
-    auto const dns_type =
-        static_cast<dns_record_type_e>(uint16_value(data + pos + x));
-    auto const dns_class = uint16_value(data + pos + x + 2);
 
-    questions.push_back({ucstring_view_t(buff, pos), dns_type, dns_class});
-    pos += x + 4;
+  /* read question section -- which would almost always be 1.*/
+  auto &questions = packet.head.questions;
+  auto rdata = buff.data() + 12;
+  for (int t = 0; t < header.q_count; t++) {
+    static_string_t name{};
+    unsigned char *new_end{};
+    bool const successful = parse_name(data, rdata, data + buffer_len,
+                                       name.name, &name.name_length, &new_end);
+    if ((new_end + 2) > (data + buffer_len) || !successful) {
+      spdlog::error("There was an error parsing the question");
+      return;
+    }
+    auto const type = static_cast<dns_record_type_e>(uint16_value(new_end));
+    auto const class_ = uint16_value(new_end + 2);
+    questions.push_back(dns_question_t{name, type, class_});
+    rdata = new_end + 4;
   }
 
-  /* read other sections */
+  /* read answers sections */
   packet.body.answers.reserve(header.ans_count);
-  auto rdata = buff.data();
-  dns_extract_query_result(packet, rdata, buffer_len, rdata + pos);
+  dns_extract_query_result(packet, buff.data(), buffer_len, rdata);
 }
 
 std::string rcode_to_string(dns_rcode_e const rcode) {

@@ -41,9 +41,13 @@ void compare_results(std::vector<json_data_t> const &previous_result,
   auto const end_iter = previous_result.cend();
   auto const domain_comparator = jd_domain_comparator_t{};
 
+  spdlog::set_pattern("[%^CHECK%$] %v");
+
   for (auto iter = previous_result.cbegin(); iter < end_iter;) {
     auto const current_find_iter = current_data_map.find(iter->domain_name);
     if (current_find_iter == current_data_map.end()) {
+      spdlog::error("{} not found in new result", iter->domain_name);
+      ++iter;
       continue;
     }
     auto const &current_domain_info_list = current_find_iter->second;
@@ -61,8 +65,8 @@ void compare_results(std::vector<json_data_t> const &previous_result,
               return a.type == b.type && a.rdata == b.rdata;
             });
         if (!found) {
-          spdlog::info("[{}][{}] missing.", iter->domain_name,
-                       dns_record_type2str(start_iter->type));
+          spdlog::error("[{}][{}] missing.\n", iter->domain_name,
+                        dns_record_type2str(start_iter->type));
         }
       }
       // information may have been changed
@@ -81,13 +85,13 @@ void compare_results(std::vector<json_data_t> const &previous_result,
         // one of the previous record wasn't found
         if (find_iter == eq_range.second) {
           if (std::distance(eq_range.first, eq_range.second) == 1) {
-            spdlog::info("[{}][{}] changed from `{}` to `{}`",
+            spdlog::info("[{}][{}] changed from `{}` to `{}`\n",
                          iter->domain_name,
                          dns_record_type2str(start_iter->type),
                          start_iter->rdata, eq_range.first->rdata);
           } else {
-            spdlog::info(
-                "[{}][{}] seems `{}` has been removed", iter->domain_name,
+            spdlog::error(
+                "[{}][{}] seems `{}` has been removed\n", iter->domain_name,
                 dns_record_type2str(start_iter->type), start_iter->rdata);
           }
         }
@@ -101,7 +105,7 @@ void compare_results(std::vector<json_data_t> const &previous_result,
                                  return a.type == b.type && a.rdata == b.rdata;
                                });
         if (!found) {
-          spdlog::info("[{}][{}] added.", iter->domain_name,
+          spdlog::info("[{}][{}] added.\n", iter->domain_name,
                        dns_record_type2str(current_elem.type));
         }
       }

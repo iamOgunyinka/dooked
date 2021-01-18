@@ -17,8 +17,14 @@
 #include <vector>
 
 namespace dooked {
+
+struct static_string_t {
+  unsigned char name[0xFF]{};
+  std::uint8_t name_length{};
+};
+
 struct dns_question_t {
-  ucstring_view_t dns_name;
+  static_string_t dns_name;
   dns_record_type_e type;
   unsigned int dns_class_;
 };
@@ -26,11 +32,6 @@ struct dns_question_t {
 struct dns_head_t {
   dns_header_t header;
   std::vector<dns_question_t> questions{};
-};
-
-struct static_string_t {
-  unsigned char name[0xFF]{};
-  std::uint8_t name_length{};
 };
 
 struct dns_alternate_record_t {
