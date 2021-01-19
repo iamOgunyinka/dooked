@@ -24,24 +24,9 @@ constexpr void set_opcode_rd(T &target, V const &value) {
   target[2] |= static_cast<unsigned char>(value & 0x1);
 }
 
-template <typename T, typename V>
-constexpr void set_rcode(T &target, V const &value) {
-  target[3] |= (value & 0xF);
-}
-
 template <typename V>
 constexpr void set_qd_count(unsigned char *t, V const &v) {
   set_16bit_value(t + 4, v);
-}
-
-template <typename V>
-constexpr void set_an_count(unsigned char *t, V const &v) {
-  set_16bit_value(t + 6, v);
-}
-
-template <typename V>
-constexpr void set_ns_count(unsigned char *t, V const &v) {
-  set_16bit_value(t + 8, v);
 }
 
 template <typename V>
@@ -135,9 +120,6 @@ struct dns_header_t {
   std::uint8_t rcode{};
   std::uint8_t opcode{};
   std::uint16_t id{};
-  std::uint16_t q_count{};    // query count
-  std::uint16_t ans_count{};  // answer count
-  std::uint16_t auth_count{}; // authority count
 };
 
 } // namespace dooked

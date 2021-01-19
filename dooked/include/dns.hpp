@@ -5,10 +5,6 @@
 #pragma warning(disable : 4996)
 #endif
 
-#ifndef _WIN32
-#include <arpa/inet.h> // for in_addr and in6_addr
-#endif
-
 #include "tdefines.hpp"
 #include "ucstring.hpp"
 
@@ -43,8 +39,6 @@ struct dns_alternate_record_t {
   union rd_data_u {
     std::uint8_t *raw;
     static_string_t name;
-    in_addr in_addr_;
-    in6_addr in6_addr_;
     rd_data_u() : raw{nullptr} {}
   } data; // RData
 };
@@ -79,9 +73,8 @@ bool dns_parse_record(std::uint8_t *begin, std::uint8_t *buf,
                       dns_alternate_record_t &record);
 bool dns_print_readable(char **buf, size_t buflen, unsigned char const *source,
                         size_t len);
-std::string dns_name2str(static_string_t const &name);
 std::string dns_raw_record_data2str(dns_alternate_record_t &record,
                                     std::uint8_t *begin, std::uint8_t *end);
-void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
+void dns_extract_query_result(int, dns_packet_t &packet, std::uint8_t *begin,
                               std::size_t len, std::uint8_t *next);
 } // namespace dooked

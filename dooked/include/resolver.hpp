@@ -30,10 +30,8 @@ private:
   domain_list_t::value_type name_{};
   dns_record_type_e current_rec_type_ = dns_record_type_e::DNS_REC_UNDEFINED;
   int last_processed_dns_index_ = -1;
-  int retries_ = 0;
   int const supported_dns_record_size_;
   static constexpr std::size_t const sizeof_packet_header = 12;
-  std::uint16_t query_id_{};
   ucstring_t send_buffer_{};
   ucstring_t recv_buffer_{};
 

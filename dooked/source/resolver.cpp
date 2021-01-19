@@ -127,10 +127,10 @@ void custom_resolver_socket_t::send_next_request() {
       current_rec_type_ = next_record_type();
     }
 
-    query_id_ = get_random_integer();
+    auto const query_id = get_random_integer();
     auto const query_type = static_cast<std::uint16_t>(current_rec_type_);
     send_buffer_.clear();
-    create_query(name_, query_type, query_id_, send_buffer_);
+    create_query(name_, query_type, query_id, send_buffer_);
     send_network_request();
   } catch (empty_container_exception_t const &) {
   } catch (bad_name_exception_t const &except) {
@@ -252,11 +252,11 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
   header.ra = data[3] & 128;
   header.z = (data[3] & 112) >> 3;
   header.rcode = data[3] & 15;
-  header.q_count = uint16_value(data + 4);
-  header.ans_count = uint16_value(data + 6);
-  header.auth_count = uint16_value(data + 8);
 
+  int const question_count = uint16_value(data + 4);
+  int const answer_count = uint16_value(data + 6);
   auto const rcode = static_cast<dns_rcode_e>(header.rcode);
+
   if (rcode != dns_rcode_e::DNS_RCODE_NO_ERROR) {
     return
 #ifdef _DEBUG
@@ -268,7 +268,7 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
   /* read question section -- which would almost always be 1.*/
   auto &questions = packet.head.questions;
   auto rdata = buff.data() + 12;
-  for (int t = 0; t < header.q_count; t++) {
+  for (int t = 0; t < question_count; t++) {
     static_string_t name{};
     unsigned char *new_end{};
     bool const successful = parse_name(data, rdata, data + buffer_len,
@@ -284,8 +284,9 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
   }
 
   /* read answers sections */
-  packet.body.answers.reserve(header.ans_count);
-  dns_extract_query_result(packet, buff.data(), buffer_len, rdata);
+  packet.body.answers.reserve(answer_count);
+  dns_extract_query_result(answer_count, packet, buff.data(), buffer_len,
+                           rdata);
 }
 
 std::string rcode_to_string(dns_rcode_e const rcode) {

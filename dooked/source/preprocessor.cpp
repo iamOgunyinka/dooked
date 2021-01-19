@@ -30,6 +30,14 @@ void to_json(json &j, dns_record_t const &record) {
            {"info", record.rdata}};
 }
 
+bool case_insensitive_compare(std::string const &a, std::string const &b) {
+  return (a.size() == b.size()) &&
+         std::equal(a.cbegin(), a.cend(), b.cbegin(),
+                    [](char const a, char const b) {
+                      return (std::toupper(a) == std::toupper(b));
+                    });
+}
+
 void compare_results(std::vector<json_data_t> const &previous_result,
                      map_container_t<dns_record_t> const &current_result) {
 #ifdef _DEBUG
@@ -41,6 +49,8 @@ void compare_results(std::vector<json_data_t> const &previous_result,
   auto const end_iter = previous_result.cend();
   auto const domain_comparator = jd_domain_comparator_t{};
 
+  // %^ designate color start, while %$ designates the end of color
+  // %v is the message we want to log
   spdlog::set_pattern("[%^CHECK%$] %v");
 
   for (auto iter = previous_result.cbegin(); iter < end_iter;) {
@@ -62,7 +72,8 @@ void compare_results(std::vector<json_data_t> const &previous_result,
         bool const found = std::binary_search(
             current_domain_info_list.cbegin(), current_domain_info_list.cend(),
             *start_iter, [](auto const &a, auto const &b) {
-              return a.type == b.type && a.rdata == b.rdata;
+              return a.type == b.type &&
+                     case_insensitive_compare(a.rdata, b.rdata);
             });
         if (!found) {
           spdlog::error("[{}][{}] missing.\n", iter->domain_name,
@@ -74,14 +85,14 @@ void compare_results(std::vector<json_data_t> const &previous_result,
       std::vector<dns_record_t> newly_detected{};
       for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
         auto const eq_range = std::equal_range(
-            current_domain_info_list.begin(), current_domain_info_list.end(),
+            current_domain_info_list.cbegin(), current_domain_info_list.cend(),
             *start_iter,
             [](auto const &a, auto const &b) { return a.type < b.type; });
-        auto const find_iter =
-            std::find_if(eq_range.first, eq_range.second,
-                         [&val = *start_iter](dns_record_t const &record) {
-                           return val.rdata == record.rdata;
-                         });
+        auto const find_iter = std::find_if(
+            eq_range.first, eq_range.second,
+            [&val = *start_iter](dns_record_t const &record) {
+              return case_insensitive_compare(val.rdata, record.rdata);
+            });
         // one of the previous record wasn't found
         if (find_iter == eq_range.second) {
           if (std::distance(eq_range.first, eq_range.second) == 1) {
@@ -99,11 +110,12 @@ void compare_results(std::vector<json_data_t> const &previous_result,
     } else {
       // or new information added
       for (auto const &current_elem : current_domain_info_list) {
-        bool const found =
-            std::binary_search(iter, last_elem_iter, current_elem,
-                               [](auto const &a, auto const &b) {
-                                 return a.type == b.type && a.rdata == b.rdata;
-                               });
+        bool const found = std::binary_search(
+            iter, last_elem_iter, current_elem,
+            [](auto const &a, auto const &b) {
+              return a.type == b.type &&
+                     case_insensitive_compare(a.rdata, b.rdata);
+            });
         if (!found) {
           spdlog::info("[{}][{}] added.\n", iter->domain_name,
                        dns_record_type2str(current_elem.type));
@@ -118,7 +130,8 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
                        runtime_args_t const &rt_args) {
   if (result_map.empty()) {
     std::error_code ec{};
-    if (!std::filesystem::remove(rt_args.output_filename, ec)) {
+    if (std::filesystem::exists(rt_args.output_filename) &&
+        !std::filesystem::remove(rt_args.output_filename, ec)) {
       spdlog::error("unable to remove {}", rt_args.output_filename);
     }
     return;
@@ -271,30 +284,12 @@ void start_name_checking(runtime_args_t &&rt_args) {
   if (rt_args.previous_data) {
     auto &previous_data = *rt_args.previous_data;
 
-    // sort the (domain)names in alphabetical order first
+    // sort the (domain)names in (alphabetical, record type) tuple order
     std::sort(previous_data.begin(), previous_data.end(),
               [](json_data_t const &a, json_data_t const &b) {
                 return std::tie(a.domain_name, a.type) <
                        std::tie(b.domain_name, b.type);
               });
-    /*
-    // then sort each (domain) names based on the record type(A, AAAA...)
-    auto iter_start = previous_data.begin();
-    auto const iter_end = previous_data.end();
-    while (iter_start < iter_end) {
-      auto new_iter = std::upper_bound(
-          iter_start, iter_end, *iter_start,
-          [](json_data_t const &first, json_data_t const &second) {
-            return first.domain_name < second.domain_name;
-          });
-      std::sort(iter_start, new_iter,
-                [](json_data_t const &a, json_data_t const &b) {
-                  return a.query_type < b.query_type;
-                });
-      iter_start = new_iter;
-    }
-    */
-
     auto &result = result_map.result();
     for (auto &res : result) {
       std::sort(res.second.begin(), res.second.end(),
@@ -404,5 +399,4 @@ void run_program(cli_args_t const &cli_args) {
 
   return start_name_checking(std::move(rt_args));
 }
-
 } // namespace dooked

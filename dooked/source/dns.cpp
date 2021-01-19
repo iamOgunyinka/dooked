@@ -200,6 +200,7 @@ dns_record_type_e dns_str_to_record_type(std::string const &str) {
             tolower(str[5]) == 'e' && tolower(str[6]) == 'y' && str[7] == 0) {
           return dns_record_type_e::DNS_REC_CDNSKEY;
         }
+        [[fallthrough]];
       default:
         return dns_record_type_e::DNS_REC_INVALID;
       }
@@ -584,13 +585,6 @@ bool dns_print_readable(char **buf, std::size_t buflen,
   return true;
 }
 
-std::string dns_name2str(static_string_t const &name) {
-  std::string buf(0xFF * 4, '\0');
-  char *ptr = buf.data();
-  dns_print_readable(&ptr, sizeof(buf), name.name, name.name_length);
-  return buf;
-}
-
 std::string dns_raw_record_data2str(dns_alternate_record_t &record,
                                     std::uint8_t *begin, std::uint8_t *end) {
   static constexpr int const raw_buf_size = 0xFFFF;
@@ -710,9 +704,10 @@ std::string dns_raw_record_data2str(dns_alternate_record_t &record,
   return raw_buf;
 }
 
-void dns_extract_query_result(dns_packet_t &packet, std::uint8_t *begin,
-                              std::size_t len, std::uint8_t *next) {
-  for (int i = 0; i < packet.head.header.ans_count; ++i) {
+void dns_extract_query_result(int const answer_count, dns_packet_t &packet,
+                              std::uint8_t *begin, std::size_t len,
+                              std::uint8_t *next) {
+  for (int i = 0; i < answer_count; ++i) {
     dns_alternate_record_t rec{};
     if (dns_parse_record_raw(begin, next, begin + len, &next, rec)) {
       dns_record_t record{};
