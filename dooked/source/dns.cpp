@@ -54,6 +54,7 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
              : NULL;
 }
 #else
+#include <arpa/inet.h> // for in_addr and in6_addr
 #include <string.h> // for memcpy, memset etc
 #endif // _WIN32
 
