@@ -1,11 +1,14 @@
 #include "preprocessor.hpp"
-#include <asio/io_context.hpp>
-#include <asio/thread_pool.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <random>
 #include <set>
 #include <thread>
 
 namespace dooked {
+
+namespace net = boost::asio;
+
 char get_random_char() {
   static std::random_device rd{};
   static std::mt19937 gen{rd()};
@@ -165,7 +168,7 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   rt_args.output_file->close();
 }
 
-void thread_functor(asio::io_context &io_context, runtime_args_t &rt_args,
+void thread_functor(net::io_context &io_context, runtime_args_t &rt_args,
                     map_container_t<dns_record_t> &result_map,
                     std::size_t const socket_count) {
   std::vector<std::unique_ptr<custom_resolver_socket_t>> sockets{};
@@ -269,7 +272,7 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
 void start_name_checking(runtime_args_t &&rt_args) {
   auto const native_thread_count = (std::min)(
       rt_args.names->size(), (std::size_t)std::thread::hardware_concurrency());
-  asio::io_context io_context((int)native_thread_count);
+  net::io_context io_context((int)native_thread_count);
 
   auto const max_open_sockets =
       (std::min)(rt_args.names->size(), (std::size_t)100);
@@ -285,9 +288,9 @@ void start_name_checking(runtime_args_t &&rt_args) {
   bool const using_lock = (native_thread_count > 1);
   map_container_t<dns_record_t> result_map(using_lock);
 
-  asio::thread_pool thread_pool(native_thread_count);
+  net::thread_pool thread_pool(native_thread_count);
   for (std::size_t index = 0; index < native_thread_count; ++index) {
-    asio::post(thread_pool, [&] {
+    net::post(thread_pool, [&] {
       thread_functor(io_context, rt_args, result_map, sockets_per_thread);
     });
   }
@@ -394,12 +397,12 @@ void run_program(cli_args_t const &cli_args) {
       port = std::stoul(split[1]);
     }
     trim(split[0]);
-    asio::error_code ec{};
-    auto const ip_address = asio::ip::make_address(split[0], ec);
+    boost::system::error_code ec{};
+    auto const ip_address = net::ip::make_address(split[0], ec);
     if (ec) {
       throw general_exception_t{ec.message()};
     }
-    asio::ip::udp::endpoint const ep{ip_address, (std::uint16_t)port};
+    net::ip::udp::endpoint const ep{ip_address, (std::uint16_t)port};
     return {ep};
   };
   try {

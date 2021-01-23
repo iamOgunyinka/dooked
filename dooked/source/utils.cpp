@@ -64,6 +64,40 @@ void split_string(std::string const &str, std::vector<std::string> &cont,
   }
 }
 
+uri::uri(std::string const &url_s) { parse(url_s); }
+
+std::string uri::target() const { return path_ + "?" + query_; }
+
+std::string uri::protocol() const { return protocol_; }
+
+std::string uri::path() const { return path_; }
+
+std::string uri::host() const { return host_; }
+
+void uri::parse(std::string const &url_s) {
+  std::string const prot_end{"://"};
+  std::string::const_iterator prot_i =
+      std::search(url_s.begin(), url_s.end(), prot_end.begin(), prot_end.end());
+  protocol_.reserve(
+      static_cast<std::size_t>(std::distance(url_s.cbegin(), prot_i)));
+  std::transform(url_s.begin(), prot_i, std::back_inserter(protocol_),
+                 [](int c) { return std::tolower(c); });
+  if (prot_i == url_s.end()) {
+    prot_i = url_s.begin();
+  } else {
+    std::advance(prot_i, prot_end.length());
+  }
+  std::string::const_iterator path_i = std::find(prot_i, url_s.end(), '/');
+  host_.reserve(static_cast<std::size_t>(std::distance(prot_i, path_i)));
+  std::transform(prot_i, path_i, std::back_inserter(host_),
+                 [](int c) { return std::tolower(c); });
+  std::string::const_iterator query_i = std::find(path_i, url_s.end(), '?');
+  path_.assign(path_i, query_i);
+  if (query_i != url_s.end())
+    ++query_i;
+  query_.assign(query_i, url_s.end());
+}
+
 bool is_text_file(std::string const &file_extension) {
   return file_extension.find(".txt") != std::string::npos ||
          file_extension.find("text/plain") != std::string::npos;

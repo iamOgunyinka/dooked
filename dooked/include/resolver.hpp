@@ -2,18 +2,18 @@
 
 #include "dns.hpp"
 #include "utils.hpp"
-#include <asio/error_code.hpp>
-#include <asio/ip/udp.hpp>
-#include <asio/steady_timer.hpp>
+#include <boost/asio/ip/udp.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <optional>
 
 namespace dooked {
-namespace net = asio;
+namespace net = boost::asio;
 
 using udp_stream_t = net::ip::udp::socket;
+using error_code = boost::system::error_code;
 
 struct dns_supported_record_type_t {
-  static std::array<dns_record_type_e, 20> const supported_types;
+  static std::array<dns_record_type_e, 10> const supported_types;
 };
 
 class custom_resolver_socket_t {
@@ -41,7 +41,7 @@ private:
   void receive_network_data();
   void establish_udp_connection();
   void on_data_sent();
-  void on_data_received(net::error_code, std::size_t);
+  void on_data_received(error_code, std::size_t);
   void send_next_request();
   void serialize_packet(dns_packet_t const &);
 

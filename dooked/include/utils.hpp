@@ -2,8 +2,7 @@
 
 #include "spdlog/spdlog.h"
 #include "ucstring.hpp"
-#include <asio/ip/udp.hpp>
-//#include <boost/process.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -19,8 +18,8 @@
 #include <vector>
 
 namespace dooked {
-
 using namespace fmt::v7;
+namespace net = boost::asio;
 using json = nlohmann::json;
 
 template <typename T> using opt_list_t = std::optional<std::vector<T>>;
@@ -38,7 +37,7 @@ struct cli_args_t {
 };
 
 struct resolver_address_t {
-  asio::ip::udp::endpoint ep{};
+  net::ip::udp::endpoint ep{};
 };
 
 template <typename T> class circular_queue_t {
@@ -105,6 +104,21 @@ struct bad_name_exception_t : std::runtime_error {
   bad_name_exception_t(std::string const &domain_name)
       : std::runtime_error{domain_name} {}
   bad_name_exception_t(char const *name) : std::runtime_error{name} {}
+};
+
+struct uri {
+  uri(std::string const &url_s);
+  std::string path() const;
+  std::string host() const;
+  std::string target() const;
+  std::string protocol() const;
+
+private:
+  void parse(std::string const &);
+  std::string host_;
+  std::string protocol_;
+  std::string query_;
+  std::string path_;
 };
 
 // only one thread does push_backs, which happens way before reading
