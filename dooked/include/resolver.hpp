@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dns.hpp"
+#include "requests.hpp"
 #include "utils.hpp"
 #include <boost/asio/ip/udp.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -18,18 +19,24 @@ struct dns_supported_record_type_t {
 
 class custom_resolver_socket_t {
   net::io_context &io_;
+  net::ssl::context &ssl_context_;
   std::optional<udp_stream_t> udp_stream_;
   std::optional<net::ip::udp::endpoint> default_ep_;
   std::optional<net::steady_timer> timer_;
+  std::optional<request_t> http_request_handler_;
+
   domain_list_t &names_;
   resolver_address_list_t &resolvers_;
   map_container_t<dns_record_t> &result_map_;
   resolver_address_t current_resolver_{};
+  bool perform_http_too_ = true;
 
 private:
   domain_list_t::value_type name_{};
   dns_record_type_e current_rec_type_ = dns_record_type_e::DNS_REC_UNDEFINED;
   int last_processed_dns_index_ = -1;
+  int http_retries_count_ = 0;
+  int http_redirects_count_ = 0;
   int const supported_dns_record_size_;
   static constexpr std::size_t const sizeof_packet_header = 12;
   ucstring_t send_buffer_{};
@@ -44,11 +51,15 @@ private:
   void on_data_received(error_code, std::size_t);
   void send_next_request();
   void serialize_packet(dns_packet_t const &);
+  void perform_http_request();
+  void continue_dns_probe();
+  void tcp_request_result(response_type_e, int, std::string const &);
 
 public:
-  custom_resolver_socket_t(net::io_context &, domain_list_t &,
-                           resolver_address_list_t &,
+  custom_resolver_socket_t(net::io_context &, net::ssl::context &,
+                           domain_list_t &, resolver_address_list_t &,
                            map_container_t<dns_record_t> &);
+  void defer_http_request(bool const perform);
   void start();
 };
 

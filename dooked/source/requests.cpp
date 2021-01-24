@@ -14,7 +14,7 @@ bool starts_with(std::string const &str, std::string const &prefix) {
                     });
 }
 
-std::array<char const *, 14> const request_handler::user_agents = {
+std::array<char const *, 14> const request_handler_t::user_agents = {
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/41.0.2228.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1",
@@ -38,14 +38,14 @@ std::string get_random_agent() {
   static std::random_device rd{};
   static std::mt19937 gen{rd()};
   static std::uniform_int_distribution<> uid(0, 13);
-  return request_handler::user_agents[uid(gen)];
+  return request_handler_t::user_agents[uid(gen)];
 }
 
 // ========================= HTTP =============================
 
-http_socket_t::http_socket_t(net::io_context &io_context,
-                             std::string domain_name,
-                             std::vector<std::string> resolved_addresses)
+http_request_handler_t::http_request_handler_t(
+    net::io_context &io_context, std::string domain_name,
+    std::vector<std::string> resolved_addresses)
     : io_{io_context}, domain_{std::move(domain_name)} {
   if (!resolved_addresses.empty()) {
     resolved_ip_addresses_.reserve(resolved_addresses.size());
@@ -55,19 +55,19 @@ http_socket_t::http_socket_t(net::io_context &io_context,
   }
 }
 
-http_socket_t::http_socket_t(
+http_request_handler_t::http_request_handler_t(
     net::io_context &io_context, std::string domain_name,
     std::vector<net::ip::tcp::endpoint> resolved_addresses)
     : io_{io_context}, domain_{std::move(domain_name)},
       resolved_ip_addresses_{std::move(resolved_addresses)} {}
 
-void http_socket_t::start(completion_cb_t cb) {
+void http_request_handler_t::start(completion_cb_t cb) {
   callback_ = std::move(cb);
   prepare_request();
   establish_connection();
 }
 
-void http_socket_t::prepare_request() {
+void http_request_handler_t::prepare_request() {
   request_.emplace();
   request_->method(http::verb::get);
   request_->version(11);
@@ -79,7 +79,7 @@ void http_socket_t::prepare_request() {
   request_->set(http::field::accept, "*/*");
 }
 
-void http_socket_t::establish_connection() {
+void http_request_handler_t::establish_connection() {
   if (resolved_ip_addresses_.empty()) {
     return resolve_name();
   }
@@ -90,7 +90,7 @@ void http_socket_t::establish_connection() {
       [=](auto const &ec, auto const &) { on_connected(ec); });
 }
 
-void http_socket_t::resolve_name() {
+void http_request_handler_t::resolve_name() {
   if (resolver_) {
     if (callback_) {
       callback_(response_type_e::cannot_resolve_name, 0, "");
@@ -115,14 +115,14 @@ void http_socket_t::resolve_name() {
       });
 }
 
-void http_socket_t::on_connected(beast::error_code const ec) {
+void http_request_handler_t::on_connected(beast::error_code const ec) {
   if (ec) {
     return reconnect();
   }
   send_http_data();
 }
 
-void http_socket_t::reconnect() {
+void http_request_handler_t::reconnect() {
   if (++connect_retries_ >= 3) {
     if (callback_) {
       return callback_(response_type_e::cannot_connect, 0, {});
@@ -132,7 +132,7 @@ void http_socket_t::reconnect() {
   }
 }
 
-void http_socket_t::send_http_data() {
+void http_request_handler_t::send_http_data() {
   socket_->expires_after(std::chrono::seconds(5));
   http::async_write(*socket_, *request_,
                     [this](auto const ec, std::size_t const sz) {
@@ -143,7 +143,7 @@ void http_socket_t::send_http_data() {
                     });
 }
 
-void http_socket_t::resend_data() {
+void http_request_handler_t::resend_data() {
   if (++send_retries_ >= 3) {
     if (callback_) {
       return callback_(response_type_e::cannot_send, 0, {});
@@ -153,7 +153,7 @@ void http_socket_t::resend_data() {
   }
 }
 
-void http_socket_t::receive_data() {
+void http_request_handler_t::receive_data() {
   socket_->expires_after(std::chrono::seconds(5));
   response_.emplace();
   buffer_ = {};
@@ -164,8 +164,8 @@ void http_socket_t::receive_data() {
                    });
 }
 
-void http_socket_t::on_data_received(beast::error_code const ec,
-                                     std::size_t const bytes_received) {
+void http_request_handler_t::on_data_received(
+    beast::error_code const ec, std::size_t const bytes_received) {
 
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
@@ -189,7 +189,7 @@ void http_socket_t::on_data_received(beast::error_code const ec,
     if (response_string.empty()) {
       response_int = response_type_e::unknown_response;
     } else {
-      if (starts_with(response_string, "https")) {
+      if (starts_with(response_string, "https://")) {
         response_int = response_type_e::https_redirected;
       } else {
         response_int = response_type_e::http_redirected;
@@ -213,7 +213,32 @@ void http_socket_t::on_data_received(beast::error_code const ec,
 
 // ================== HTTPS ================================
 
-void https_socket_t::perform_ssl_ritual() {
+https_request_handler_t::https_request_handler_t(
+    net::io_context &io_context, net::ssl::context &ssl_context,
+    std::string name, std::vector<std::string> const &resolved_addresses)
+    : io_{io_context}, ssl_context_{ssl_context}, domain_name_{
+                                                      std::move(name)} {
+  if (!resolved_addresses.empty()) {
+    resolved_ip_addresses_.reserve(resolved_addresses.size());
+    for (auto const &address : resolved_addresses) {
+      resolved_ip_addresses_.push_back({net::ip::make_address(address), 80});
+    }
+  }
+}
+
+https_request_handler_t::https_request_handler_t(
+    net::io_context &io_context, net::ssl::context &ssl_context,
+    std::string name, std::vector<net::ip::tcp::endpoint> resolved_addresses)
+    : io_{io_context}, ssl_context_{ssl_context}, domain_name_{std::move(name)},
+      resolved_ip_addresses_{std::move(resolved_addresses)} {}
+
+void https_request_handler_t::start(completion_cb_t callback) {
+  callback_ = std::move(callback);
+  prepare_request_data();
+  connect();
+}
+
+void https_request_handler_t::perform_ssl_ritual() {
   if (!SSL_set_tlsext_host_name(ssl_stream_->native_handle(),
                                 domain_name_.c_str())) {
     beast::error_code ec{static_cast<int>(::ERR_get_error()),
@@ -222,52 +247,57 @@ void https_socket_t::perform_ssl_ritual() {
   }
 }
 
-void https_socket_t::perform_ssl_handshake() {
+void https_request_handler_t::perform_ssl_handshake() {
   beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(15));
   ssl_stream_->async_handshake(
       net::ssl::stream_base::client,
       [=](beast::error_code ec) { return on_ssl_handshake(ec); });
 }
 
-void https_socket_t::on_ssl_handshake(beast::error_code ec) {
+void https_request_handler_t::on_ssl_handshake(beast::error_code ec) {
   if (ec.category() == net::error::get_ssl_category() &&
       ec.value() == ERR_PACK(ERR_LIB_SSL, 0, SSL_R_SHORT_READ)) {
     return send_https_data();
   }
   if (ec) {
-    // spdlog::error("SSL handshake: {}", ec.message());
+    if (callback_) {
+      callback_(response_type_e::ssl_handshake_failed, 0, ec.message());
+    }
     return;
   }
   send_https_data();
 }
 
-void https_socket_t::send_https_data() {
+void https_request_handler_t::send_https_data() {
   beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
   http::async_write(
       *ssl_stream_, *get_request_,
-      beast::bind_front_handler(&https_socket_t::on_data_sent, this));
+      beast::bind_front_handler(&https_request_handler_t::on_data_sent, this));
 }
 
-void https_socket_t::on_data_sent(beast::error_code ec, std::size_t) {
+void https_request_handler_t::on_data_sent(beast::error_code ec, std::size_t) {
   if (ec) {
+    if (callback_) {
+      callback_(response_type_e::cannot_send, 0, ec.message());
+    }
     return;
   }
   receive_data();
 }
 
-void https_socket_t::prepare_request_data() {
+void https_request_handler_t::prepare_request_data() {
   get_request_.emplace();
   get_request_->method(http::verb::get);
   get_request_->version(11);
   get_request_->target("/");
   get_request_->keep_alive(true);
-  get_request_->set(http::field::host, domain_name_);
+  get_request_->set(http::field::host, "{}:443"_format(domain_name_));
   get_request_->set(http::field::cache_control, "no-cache");
   get_request_->set(http::field::user_agent, get_random_agent());
   get_request_->set(http::field::accept, "*/*");
 }
 
-void https_socket_t::receive_data() {
+void https_request_handler_t::receive_data() {
   response_.emplace();
   recv_buffer_.emplace();
   beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
@@ -277,7 +307,7 @@ void https_socket_t::receive_data() {
                    });
 }
 
-void https_socket_t::connect() {
+void https_request_handler_t::connect() {
   if (resolved_ip_addresses_.empty()) {
     return resolve_name();
   }
@@ -289,25 +319,24 @@ void https_socket_t::connect() {
                      [=](auto const &ec, auto const &) { on_connect(ec); });
 }
 
-void https_socket_t::reconnect() {}
-
-void https_socket_t::start(completion_cb_t callback) {
-  callback_ = std::move(callback);
-  prepare_request_data();
+void https_request_handler_t::reconnect() {
+  if (++reconnect_count_ >= 3) {
+    if (callback_) {
+      callback_(response_type_e::cannot_connect, 0, {});
+    }
+    return;
+  }
   connect();
 }
 
-void https_socket_t::on_connect(beast::error_code const ec) {
+void https_request_handler_t::on_connect(beast::error_code const ec) {
   if (ec) {
     return reconnect();
   }
   perform_ssl_handshake();
 }
-https_socket_t::https_socket_t(net::io_context &io_context,
-                               net::ssl::context &ssl_context)
-    : io_{io_context}, ssl_context_{ssl_context} {}
 
-void https_socket_t::resolve_name() {
+void https_request_handler_t::resolve_name() {
   if (resolver_) {
     if (callback_) {
       callback_(response_type_e::cannot_resolve_name, 0, "");
@@ -329,23 +358,26 @@ void https_socket_t::resolve_name() {
         for (auto const &r : results) {
           resolved_ip_addresses_.push_back(r.endpoint());
         }
+        spdlog::info("Total resolved: {}", resolved_ip_addresses_.size());
         return connect();
       });
 }
 
-void https_socket_t::on_data_received(beast::error_code const ec,
-                                      std::size_t const bytes_received) {
+void https_request_handler_t::on_data_received(
+    beast::error_code const ec, std::size_t const bytes_received) {
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
-#ifdef _DEBUG
-    spdlog::error(ec.message());
-#endif // _DEBUG
-
+    if (ec != beast::error::timeout) {
+      response_int = response_type_e::expected_http_only;
+    } else {
+      response_int = response_type_e::recv_timed_out;
+    }
     if (callback_) {
-      callback_(response_type_e::recv_timed_out, 0, {});
+      callback_(response_int, 0, domain_name_);
     }
     return;
   }
+
   int const status_code = response_->result_int();
   int const status_code_simple = status_code / 100;
   std::string response_string{};
@@ -357,7 +389,7 @@ void https_socket_t::on_data_received(beast::error_code const ec,
     if (response_string.empty()) {
       response_int = response_type_e::unknown_response;
     } else {
-      if (starts_with(response_string, "https")) {
+      if (starts_with(response_string, "https://")) {
         response_int = response_type_e::https_redirected;
       } else {
         response_int = response_type_e::http_redirected;

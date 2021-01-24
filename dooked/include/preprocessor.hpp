@@ -7,10 +7,14 @@ namespace dooked {
 struct json_data_t {
   std::string domain_name{};
   std::string rdata{};
-  std::uint32_t ttl{};
+  int ttl{};
+  int http_code{};
+  int content_length{};
+
   dns_record_type_e type;
 
-  static json_data_t serialize(std::string const &d,
+  static json_data_t serialize(std::string const &d, int const len,
+                               int const http_code,
                                json::object_t &json_object) {
     json_data_t data{};
     data.domain_name = d;
@@ -18,6 +22,8 @@ struct json_data_t {
         dns_str_to_record_type(json_object["type"].get<json::string_t>());
     data.rdata = json_object["info"].get<json::string_t>();
     data.ttl = json_object["ttl"].get<json::number_integer_t>();
+    data.content_length = len;
+    data.http_code = http_code;
     return data;
   }
 };
@@ -34,6 +40,7 @@ struct runtime_args_t {
   std::optional<std::vector<json_data_t>> previous_data;
   std::unique_ptr<std::ofstream> output_file{};
   std::string output_filename{};
+  http_process_e http_request_time_;
 };
 
 void to_json(json &j, dns_record_t const &record);

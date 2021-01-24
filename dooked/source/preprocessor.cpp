@@ -64,7 +64,8 @@ void compare_results(std::vector<json_data_t> const &previous_result,
       iter = std::upper_bound(iter, end_iter, *iter, domain_comparator);
       continue;
     }
-    auto const &current_domain_info_list = current_find_iter->second;
+    auto const &current_domain_info_list =
+        current_find_iter->second.dns_result_list_;
     auto const last_elem_iter =
         std::upper_bound(iter, end_iter, *iter, domain_comparator);
     auto const previous_total_elem = std::distance(iter, last_elem_iter);
@@ -143,6 +144,8 @@ void compare_results(std::vector<json_data_t> const &previous_result,
   }
 }
 
+std::string code_string(int const http_status_code) { return {}; }
+
 void write_json_result(map_container_t<dns_record_t> const &result_map,
                        runtime_args_t const &rt_args) {
   if (result_map.empty()) {
@@ -156,8 +159,15 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
 
   json::array_t list;
   for (auto const &result_pair : result_map.cresult()) {
+    json::object_t internal_object;
+    internal_object["dns_probe"] = result_pair.second.dns_result_list_;
+    internal_object["content_length"] = result_pair.second.content_length_;
+    internal_object["http_code"] = result_pair.second.http_status_;
+    internal_object["code_string"] =
+        code_string(result_pair.second.http_status_);
+    
     json::object_t object;
-    object[result_pair.first] = result_pair.second;
+    object[result_pair.first] = internal_object;
     list.push_back(std::move(object));
   }
   json::object_t res_object;
@@ -168,14 +178,17 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   rt_args.output_file->close();
 }
 
-void thread_functor(net::io_context &io_context, runtime_args_t &rt_args,
+void thread_functor(net::io_context &io_context, net::ssl::context &ssl_context,
+                    runtime_args_t &rt_args,
                     map_container_t<dns_record_t> &result_map,
-                    std::size_t const socket_count) {
+                    std::size_t const socket_count, bool const deferring) {
   std::vector<std::unique_ptr<custom_resolver_socket_t>> sockets{};
   sockets.resize(socket_count);
   for (std::size_t i = 0; i < socket_count; ++i) {
     sockets[i] = std::make_unique<custom_resolver_socket_t>(
-        io_context, *rt_args.names, *rt_args.resolvers, result_map);
+        io_context, ssl_context, *rt_args.names, *rt_args.resolvers,
+        result_map);
+    sockets[i]->defer_http_request(deferring);
     sockets[i]->start();
   }
   io_context.run();
@@ -281,23 +294,36 @@ void start_name_checking(runtime_args_t &&rt_args) {
       (std::size_t)1, std::size_t(max_open_sockets / native_thread_count));
 #ifdef _DEBUG
   spdlog::info("Native thread count: {}", native_thread_count);
-  spdlog::info("sockets per thread: {}", sockets_per_thread);
-  spdlog::info("total input: {}", rt_args.names->size());
+  spdlog::info("Sockets per thread: {}", sockets_per_thread);
+  spdlog::info("Total input: {}", rt_args.names->size());
 #endif // _DEBUG
 
   bool const using_lock = (native_thread_count > 1);
   map_container_t<dns_record_t> result_map(using_lock);
 
   net::thread_pool thread_pool(native_thread_count);
+  net::ssl::context ssl_context(net::ssl::context::tlsv12_client);
+  ssl_context.set_default_verify_paths();
+  ssl_context.set_verify_mode(net::ssl::verify_none);
+
+  bool const deferring = rt_args.http_request_time_ == http_process_e::deferred;
+
+  // perform DNS record probing.
   for (std::size_t index = 0; index < native_thread_count; ++index) {
     net::post(thread_pool, [&] {
-      thread_functor(io_context, rt_args, result_map, sockets_per_thread);
+      thread_functor(io_context, ssl_context, rt_args, result_map,
+                     sockets_per_thread, deferring);
     });
   }
   thread_pool.join();
+
+  // if we had defer HTTP/S "probe", now is the time to get to it
+  if (!deferring) {
+  }
+
   write_json_result(result_map, rt_args);
 
-  // compare old with new result
+  // compare old with new result -- only if we had previous record
   if (rt_args.previous_data) {
     auto &previous_data = *rt_args.previous_data;
 
@@ -309,7 +335,8 @@ void start_name_checking(runtime_args_t &&rt_args) {
               });
     auto &result = result_map.result();
     for (auto &res : result) {
-      std::sort(res.second.begin(), res.second.end(),
+      std::sort(res.second.dns_result_list_.begin(),
+                res.second.dns_result_list_.end(),
                 [](dns_record_t const &a, dns_record_t const &b) {
                   return std::tie(a.type, a.rdata) < std::tie(b.type, b.rdata);
                 });
@@ -413,6 +440,8 @@ void run_program(cli_args_t const &cli_args) {
     return spdlog::error(e.what());
   }
   rt_args.resolvers.emplace(std::move(resolver_eps));
+  rt_args.http_request_time_ =
+      static_cast<http_process_e>(cli_args.post_http_request);
 
   return start_name_checking(std::move(rt_args));
 }

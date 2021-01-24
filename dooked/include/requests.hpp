@@ -7,7 +7,6 @@
 #include <boost/beast/core/tcp_stream.hpp>
 #include <boost/beast/http/empty_body.hpp>
 #include <boost/beast/http/message.hpp>
-#include <boost/beast/http/string_body.hpp>
 #include <boost/beast/ssl.hpp>
 
 #include <optional>
@@ -29,12 +28,14 @@ enum class response_type_e : std::uint8_t {
   not_found = 44,
   bad_request = 40,
   server_error = 5,
-  recv_timed_out = 6
+  recv_timed_out = 6,
+  ssl_handshake_failed = 7,
+  expected_http_only = 8
 };
 
 using completion_cb_t = std::function<void(response_type_e, int, std::string)>;
 
-class http_socket_t {
+class http_request_handler_t {
   net::io_context &io_;
   std::string domain_;
   std::vector<net::ip::tcp::endpoint> resolved_ip_addresses_;
@@ -59,14 +60,16 @@ private:
   void on_data_received(beast::error_code, std::size_t);
 
 public:
-  http_socket_t(net::io_context &, std::string,
-                std::vector<std::string> resolved_addresses_ = {});
-  http_socket_t(net::io_context &, std::string,
-                std::vector<net::ip::tcp::endpoint> resolved_addresses_);
+  http_request_handler_t(net::io_context &, std::string,
+                         std::vector<std::string> resolved_addresses_ = {});
+  http_request_handler_t(
+      net::io_context &, std::string,
+      std::vector<net::ip::tcp::endpoint> resolved_addresses_);
+  auto &resolved_addresses() { return resolved_ip_addresses_; }
   void start(completion_cb_t = nullptr);
 };
 
-class https_socket_t {
+class https_request_handler_t {
   net::io_context &io_;
   net::ssl::context &ssl_context_;
   std::string domain_name_;
@@ -77,6 +80,7 @@ class https_socket_t {
   std::optional<beast::flat_buffer> recv_buffer_{};
   std::vector<net::ip::tcp::endpoint> resolved_ip_addresses_;
   completion_cb_t callback_ = nullptr;
+  int reconnect_count_ = 0;
 
 private:
   void perform_ssl_ritual();
@@ -93,17 +97,25 @@ private:
   void resolve_name();
 
 public:
-  https_socket_t(net::io_context &, net::ssl::context &);
+  https_request_handler_t(net::io_context &, net::ssl::context &, std::string,
+                          std::vector<std::string> const &resolved = {});
+
+  https_request_handler_t(net::io_context &, net::ssl::context &, std::string,
+                          std::vector<net::ip::tcp::endpoint> resolved);
+
   void start(completion_cb_t = nullptr);
+  auto &resolved_addresses() { return resolved_ip_addresses_; }
 };
 
-class requests {
-  std::variant<http_socket_t, https_socket_t> request_;
+// needed to
+struct dummy_struct_t {};
+
+struct request_t {
+  std::variant<dummy_struct_t, http_request_handler_t, https_request_handler_t>
+      request_;
 };
 
-struct request_handler {
+struct request_handler_t {
   static std::array<char const *, 14> const user_agents;
 };
-
-bool case_insensitive_compare(std::string const &a, std::string const &b);
 } // namespace dooked

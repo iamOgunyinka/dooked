@@ -25,6 +25,7 @@ using json = nlohmann::json;
 template <typename T> using opt_list_t = std::optional<std::vector<T>>;
 
 enum class file_type_e { txt_type, json_type, unknown_type };
+enum class http_process_e { in_place, deferred };
 
 struct cli_args_t {
   std::string resolver{}; // defaults to 8.8.8.8
@@ -33,6 +34,7 @@ struct cli_args_t {
   std::string input_filename{};
 
   int file_type = static_cast<int>(file_type_e::txt_type);
+  int post_http_request = static_cast<int>(http_process_e::in_place);
   bool include_date = false;
 };
 
@@ -59,7 +61,13 @@ public:
 
 // contains result for all searches.
 template <typename ValueType> class map_container_t {
-  std::map<std::string, std::vector<ValueType>> map_;
+
+  struct response_t {
+    int content_length_{};
+    int http_status_ = 0;
+    std::vector<ValueType> dns_result_list_;
+  };
+  std::map<std::string, response_t> map_;
   std::optional<std::mutex> opt_mutex_;
 
 public:
@@ -71,11 +79,22 @@ public:
   // needed by different threads
   void append(std::string const &key, ValueType const &value) {
     if (!opt_mutex_) {
-      map_[key].push_back(value);
+      map_[key].dns_result_list_.push_back(value);
       return;
     }
     std::lock_guard<std::mutex> lock_g{*opt_mutex_};
-    map_[key].push_back(value);
+    map_[key].dns_result_list_.push_back(value);
+  }
+
+  void insert(std::string const &name, int const len, int const http_status) {
+    if (!opt_mutex_) {
+      map_[name].content_length_ = len;
+      map_[name].http_status_ = http_status;
+      return;
+    }
+    std::lock_guard<std::mutex> lock_g{*opt_mutex_};
+    map_[name].content_length_ = len;
+    map_[name].http_status_ = http_status;
   }
   // only used by main thread, after all "computations" has been
   // done. There's no need for locks here.
@@ -196,14 +215,24 @@ opt_list_t<T> read_json_string(Iterator const begin, Iterator const end) {
     json json_content = json::parse(begin, end);
     auto object_root = json_content.get<json::object_t>();
     auto const result_list = object_root["result"].get<json::array_t>();
+
     for (auto const &result_item : result_list) {
       auto json_object = result_item.get<json::object_t>();
+
       for (auto const json_item : json_object) {
         std::string const domain_name = json_item.first;
-        auto const domain_detail_list = json_item.second.get<json::array_t>();
+        auto internal_object = json_item.second.get<json::object_t>();
+        auto const domain_detail_list =
+            internal_object["dns_probe"].get<json::array_t>();
+        auto const content_length =
+            internal_object["content_length"].get<json::number_integer_t>();
+        auto const http_code =
+            internal_object["http_code"].get<json::number_integer_t>();
+
         for (auto const &domain_detail : domain_detail_list) {
           auto domain_object = domain_detail.get<json::object_t>();
-          result.push_back(T::serialize(domain_name, domain_object));
+          result.push_back(T::serialize(domain_name, content_length, http_code,
+                                        domain_object));
         }
       }
     }

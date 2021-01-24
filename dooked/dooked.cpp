@@ -10,6 +10,9 @@ int main(int argc, char **argv) {
 
   app.add_option("-o,--output", cli_args.output_filename,
                  "write result to output file");
+  app.add_flag(
+      "--defer", cli_args.post_http_request,
+      "defers http request until after all DNS requests have been completed");
   app.add_option(
       "-t,--file-type", cli_args.file_type,
       "the file type used as input file: (default)txt=0, txt=1, unknown=2");
