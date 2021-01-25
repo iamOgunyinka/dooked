@@ -41,6 +41,7 @@ struct runtime_args_t {
   std::unique_ptr<std::ofstream> output_file{};
   std::string output_filename{};
   http_process_e http_request_time_;
+  int thread_count = 0;
 };
 
 void to_json(json &j, dns_record_t const &record);

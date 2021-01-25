@@ -125,7 +125,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\vcpkg\installed\x64-windows\debug\lib;D:\boost_1_75\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libeay32.lib;ssleay32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libssl.lib;libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -147,6 +147,7 @@
   <ItemGroup>
     <ClCompile Include="dooked.cpp" />
     <ClCompile Include="source\dns.cpp" />
+    <ClCompile Include="source\http_resolver.cpp" />
     <ClCompile Include="source\preprocessor.cpp" />
     <ClCompile Include="source\requests.cpp" />
     <ClCompile Include="source\resolver.cpp" />
@@ -155,6 +156,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\dns.hpp" />
+    <ClInclude Include="include\http_resolver.hpp" />
     <ClInclude Include="include\preprocessor.hpp" />
     <ClInclude Include="include\requests.hpp" />
     <ClInclude Include="include\resolver.hpp" />

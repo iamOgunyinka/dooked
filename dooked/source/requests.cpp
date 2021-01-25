@@ -1,6 +1,5 @@
 #include "requests.hpp"
 #include "utils.hpp"
-#include <boost/asio/strand.hpp>
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/http/write.hpp>
 
@@ -8,7 +7,8 @@
 
 namespace dooked {
 bool starts_with(std::string const &str, std::string const &prefix) {
-  return std::equal(str.cbegin(), str.cbegin() + prefix.size(), prefix.cbegin(),
+  return str.size() >= prefix.size() &&
+         std::equal(str.cbegin(), str.cbegin() + prefix.size(), prefix.cbegin(),
                     [](char const a, char const b) {
                       return (std::toupper(a) == std::toupper(b));
                     });
@@ -43,23 +43,9 @@ std::string get_random_agent() {
 
 // ========================= HTTP =============================
 
-http_request_handler_t::http_request_handler_t(
-    net::io_context &io_context, std::string domain_name,
-    std::vector<std::string> resolved_addresses)
-    : io_{io_context}, domain_{std::move(domain_name)} {
-  if (!resolved_addresses.empty()) {
-    resolved_ip_addresses_.reserve(resolved_addresses.size());
-    for (auto const &address : resolved_addresses) {
-      resolved_ip_addresses_.push_back({net::ip::make_address(address), 80});
-    }
-  }
-}
-
-http_request_handler_t::http_request_handler_t(
-    net::io_context &io_context, std::string domain_name,
-    std::vector<net::ip::tcp::endpoint> resolved_addresses)
-    : io_{io_context}, domain_{std::move(domain_name)},
-      resolved_ip_addresses_{std::move(resolved_addresses)} {}
+http_request_handler_t::http_request_handler_t(net::io_context &io_context,
+                                               std::string domain_name)
+    : io_{io_context}, domain_{std::move(domain_name)} {}
 
 void http_request_handler_t::start(completion_cb_t cb) {
   callback_ = std::move(cb);
@@ -170,7 +156,7 @@ void http_request_handler_t::on_data_received(
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
 #ifdef _DEBUG
-    spdlog::error(ec.message());
+    spdlog::error("HTTP error: {}", ec.message());
 #endif // _DEBUG
 
     if (callback_) {
@@ -200,37 +186,34 @@ void http_request_handler_t::on_data_received(
       response_int = response_type_e::not_found;
     } else if (status_code == 400) {
       response_int = response_type_e::bad_request;
+    } else if (status_code == 403) {
+      response_int = response_type_e::forbidden;
     }
   } else if (status_code_simple == 5) {
     response_int = response_type_e::server_error;
   } else {
     response_int = response_type_e::unknown_response;
   }
+  int content_length = bytes_received;
+  if (response_->has_content_length()) {
+    try {
+      content_length =
+          std::stoi((*response_)[http::field::content_length].to_string());
+    } catch (std::exception const &) {
+    }
+  }
   if (callback_) {
-    callback_(response_int, (int)bytes_received, response_string);
+    callback_(response_int, content_length, response_string);
   }
 }
 
 // ================== HTTPS ================================
 
-https_request_handler_t::https_request_handler_t(
-    net::io_context &io_context, net::ssl::context &ssl_context,
-    std::string name, std::vector<std::string> const &resolved_addresses)
+https_request_handler_t::https_request_handler_t(net::io_context &io_context,
+                                                 net::ssl::context &ssl_context,
+                                                 std::string name)
     : io_{io_context}, ssl_context_{ssl_context}, domain_name_{
-                                                      std::move(name)} {
-  if (!resolved_addresses.empty()) {
-    resolved_ip_addresses_.reserve(resolved_addresses.size());
-    for (auto const &address : resolved_addresses) {
-      resolved_ip_addresses_.push_back({net::ip::make_address(address), 80});
-    }
-  }
-}
-
-https_request_handler_t::https_request_handler_t(
-    net::io_context &io_context, net::ssl::context &ssl_context,
-    std::string name, std::vector<net::ip::tcp::endpoint> resolved_addresses)
-    : io_{io_context}, ssl_context_{ssl_context}, domain_name_{std::move(name)},
-      resolved_ip_addresses_{std::move(resolved_addresses)} {}
+                                                      std::move(name)} {}
 
 void https_request_handler_t::start(completion_cb_t callback) {
   callback_ = std::move(callback);
@@ -251,17 +234,25 @@ void https_request_handler_t::perform_ssl_handshake() {
   beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(15));
   ssl_stream_->async_handshake(
       net::ssl::stream_base::client,
-      [=](beast::error_code ec) { return on_ssl_handshake(ec); });
+      [=](boost::system::error_code ec) { return on_ssl_handshake(ec); });
 }
 
-void https_request_handler_t::on_ssl_handshake(beast::error_code ec) {
-  if (ec.category() == net::error::get_ssl_category() &&
-      ec.value() == ERR_PACK(ERR_LIB_SSL, 0, SSL_R_SHORT_READ)) {
-    return send_https_data();
-  }
+void https_request_handler_t::on_ssl_handshake(
+    boost::system::error_code const ec) {
   if (ec) {
+    auto error_type = response_type_e::ssl_handshake_failed;
+    bool const ssl_error = ec.category() == net::error::get_ssl_category();
+#ifdef _DEBUG
+    spdlog::error("SSL handshake({})({}): {}", ec.value(), ssl_error,
+                  ec.message());
+#endif // _DEBUG
+    if (ssl_error && ERR_PACK(ERR_LIB_SSL, 0, SSL_R_WRONG_VERSION_NUMBER)) {
+      error_type = response_type_e::ssl_change_to_http;
+    } else if (ec.value() == 10'054) { // try switching to HTTP
+      error_type = response_type_e::ssl_change_to_http;
+    }
     if (callback_) {
-      callback_(response_type_e::ssl_handshake_failed, 0, ec.message());
+      callback_(error_type, 0, ec.message());
     }
     return;
   }
@@ -291,7 +282,7 @@ void https_request_handler_t::prepare_request_data() {
   get_request_->version(11);
   get_request_->target("/");
   get_request_->keep_alive(true);
-  get_request_->set(http::field::host, "{}:443"_format(domain_name_));
+  get_request_->set(http::field::host, domain_name_);
   get_request_->set(http::field::cache_control, "no-cache");
   get_request_->set(http::field::user_agent, get_random_agent());
   get_request_->set(http::field::accept, "*/*");
@@ -311,7 +302,9 @@ void https_request_handler_t::connect() {
   if (resolved_ip_addresses_.empty()) {
     return resolve_name();
   }
-  ssl_stream_.emplace(net::make_strand(io_), ssl_context_);
+  ssl_stream_.emplace(io_, ssl_context_);
+  perform_ssl_ritual();
+
   beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
   beast::get_lowest_layer(*ssl_stream_)
       .async_connect(resolved_ip_addresses_.cbegin(),
@@ -331,20 +324,22 @@ void https_request_handler_t::reconnect() {
 
 void https_request_handler_t::on_connect(beast::error_code const ec) {
   if (ec) {
+#ifdef _DEBUG
+    spdlog::info("Could not connect. Will reconnect now...");
+#endif
     return reconnect();
   }
   perform_ssl_handshake();
 }
 
 void https_request_handler_t::resolve_name() {
-  if (resolver_) {
+  if (resolver_) { // we have tried resolving the name earlier
     if (callback_) {
       callback_(response_type_e::cannot_resolve_name, 0, "");
     }
     return;
   }
-
-  resolver_.emplace(net::make_strand(io_));
+  resolver_.emplace(io_);
   resolver_->async_resolve(
       domain_name_, "https", [this](auto const &error, auto const &results) {
         if (error) {
@@ -358,7 +353,6 @@ void https_request_handler_t::resolve_name() {
         for (auto const &r : results) {
           resolved_ip_addresses_.push_back(r.endpoint());
         }
-        spdlog::info("Total resolved: {}", resolved_ip_addresses_.size());
         return connect();
       });
 }
@@ -368,7 +362,7 @@ void https_request_handler_t::on_data_received(
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
     if (ec != beast::error::timeout) {
-      response_int = response_type_e::expected_http_only;
+      response_int = response_type_e::ssl_change_to_http;
     } else {
       response_int = response_type_e::recv_timed_out;
     }
@@ -377,7 +371,6 @@ void https_request_handler_t::on_data_received(
     }
     return;
   }
-
   int const status_code = response_->result_int();
   int const status_code_simple = status_code / 100;
   std::string response_string{};
@@ -400,6 +393,8 @@ void https_request_handler_t::on_data_received(
       response_int = response_type_e::not_found;
     } else if (status_code == 400) {
       response_int = response_type_e::bad_request;
+    } else if (status_code == 403) {
+      response_int = response_type_e::forbidden;
     }
   } else if (status_code_simple == 5) {
     response_int = response_type_e::server_error;

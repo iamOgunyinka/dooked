@@ -35,6 +35,7 @@ struct cli_args_t {
 
   int file_type = static_cast<int>(file_type_e::txt_type);
   int post_http_request = static_cast<int>(http_process_e::in_place);
+  int thread_count = 0;
   bool include_date = false;
 };
 
@@ -143,28 +144,31 @@ private:
 // only one thread does push_backs, which happens way before reading
 // however, multiple threads will read from it later.
 template <typename T, typename Container = std::deque<T>> class synced_queue_t {
-  std::queue<T, Container> container{};
+  std::queue<T, Container> container_{};
   std::mutex mutex_{};
 
 public:
   synced_queue_t() = default;
   synced_queue_t(synced_queue_t const &) = delete;
+  synced_queue_t(std::queue<T, Container> &&container)
+      : container_{std::move(container)} {}
   synced_queue_t(synced_queue_t &&queue)
-      : container{std::move(queue.container)} {}
-  void push_back(T const &item) { container.push(item); }
-  void push_back(T &&item) { container.push(std::move(item)); }
+      : container_{std::move(queue.container_)} {}
+  void push_back(T const &item) { container_.push(item); }
+  void push_back(T &&item) { container_.push(std::move(item)); }
   T next_item() {
     std::lock_guard<std::mutex> lockg{mutex_};
-    if (container.empty()) {
+    if (container_.empty()) {
       throw empty_container_exception_t{};
     }
-    T data = container.front();
-    container.pop();
+    T data = container_.front();
+    container_.pop();
     return data;
   }
   typename std::queue<T, Container>::size_type size() {
-    return container.size();
+    return container_.size();
   }
+  std::queue<T, Container> clone() const { return container_; }
   using value_type = T;
 };
 

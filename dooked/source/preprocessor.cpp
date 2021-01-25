@@ -1,4 +1,5 @@
 #include "preprocessor.hpp"
+#include "http_resolver.hpp"
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <random>
@@ -144,7 +145,32 @@ void compare_results(std::vector<json_data_t> const &previous_result,
   }
 }
 
-std::string code_string(int const http_status_code) { return {}; }
+std::string code_string(int const http_status_code) {
+  if (http_status_code == (int)response_type_e::cannot_connect) {
+    return "could not connect";
+  } else if (http_status_code == 200) {
+    return "200 - OK";
+  } else if (http_status_code == (int)response_type_e::cannot_resolve_name) {
+    return "could not resolve name";
+  } else if (http_status_code == (int)response_type_e::cannot_send) {
+    return "unable to send GET request to domain name";
+  } else if (http_status_code == 309) {
+    return "too many redirection(>10)";
+  } else if (http_status_code == (int)response_type_e::not_found) {
+    return "404 - Not found";
+  } else if (http_status_code == (int)response_type_e::bad_request) {
+    return "400 - Bad request";
+  } else if (http_status_code == (int)response_type_e::forbidden ||
+             http_status_code == 403) {
+    return "403 - Forbidden";
+  } else if (http_status_code == 503) {
+    return "50(0-3) - Server error";
+  } else if (http_status_code == (int)response_type_e::recv_timed_out) {
+    return "Recv timed out";
+  }
+
+  return "unknown error occurred";
+}
 
 void write_json_result(map_container_t<dns_record_t> const &result_map,
                        runtime_args_t const &rt_args) {
@@ -165,7 +191,7 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
     internal_object["http_code"] = result_pair.second.http_status_;
     internal_object["code_string"] =
         code_string(result_pair.second.http_status_);
-    
+
     json::object_t object;
     object[result_pair.first] = internal_object;
     list.push_back(std::move(object));
@@ -178,10 +204,10 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   rt_args.output_file->close();
 }
 
-void thread_functor(net::io_context &io_context, net::ssl::context &ssl_context,
-                    runtime_args_t &rt_args,
-                    map_container_t<dns_record_t> &result_map,
-                    std::size_t const socket_count, bool const deferring) {
+void dns_functor(net::io_context &io_context, net::ssl::context &ssl_context,
+                 runtime_args_t &rt_args,
+                 map_container_t<dns_record_t> &result_map,
+                 std::size_t const socket_count, bool const deferring) {
   std::vector<std::unique_ptr<custom_resolver_socket_t>> sockets{};
   sockets.resize(socket_count);
   for (std::size_t i = 0; i < socket_count; ++i) {
@@ -189,6 +215,20 @@ void thread_functor(net::io_context &io_context, net::ssl::context &ssl_context,
         io_context, ssl_context, *rt_args.names, *rt_args.resolvers,
         result_map);
     sockets[i]->defer_http_request(deferring);
+    sockets[i]->start();
+  }
+  io_context.run();
+}
+
+void http_functor(net::io_context &io_context, net::ssl::context &ssl_context,
+                  runtime_args_t &rt_args,
+                  map_container_t<dns_record_t> &result_map,
+                  std::size_t const socket_count) {
+  std::vector<std::unique_ptr<http_resolver_t>> sockets{};
+  sockets.resize(socket_count);
+  for (std::size_t i = 0; i < socket_count; ++i) {
+    sockets[i] = std::make_unique<http_resolver_t>(io_context, ssl_context,
+                                                   *rt_args.names, result_map);
     sockets[i]->start();
   }
   io_context.run();
@@ -283,12 +323,14 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
 }
 
 void start_name_checking(runtime_args_t &&rt_args) {
-  auto const native_thread_count = (std::min)(
-      rt_args.names->size(), (std::size_t)std::thread::hardware_concurrency());
-  net::io_context io_context((int)native_thread_count);
+  std::size_t const user_specified_thread =
+      (rt_args.thread_count > 0) ? (std::size_t)rt_args.thread_count
+                                 : std::thread::hardware_concurrency();
+  auto const native_thread_count =
+      (std::min)(rt_args.names->size(), user_specified_thread);
 
   auto const max_open_sockets =
-      (std::min)(rt_args.names->size(), (std::size_t)100);
+      (std::min)(rt_args.names->size(), (std::size_t)32);
   // minimum of 1 socket per thread
   std::size_t const sockets_per_thread = (std::max)(
       (std::size_t)1, std::size_t(max_open_sockets / native_thread_count));
@@ -300,25 +342,43 @@ void start_name_checking(runtime_args_t &&rt_args) {
 
   bool const using_lock = (native_thread_count > 1);
   map_container_t<dns_record_t> result_map(using_lock);
+  bool const deferring = rt_args.http_request_time_ == http_process_e::deferred;
 
-  net::thread_pool thread_pool(native_thread_count);
   net::ssl::context ssl_context(net::ssl::context::tlsv12_client);
   ssl_context.set_default_verify_paths();
   ssl_context.set_verify_mode(net::ssl::verify_none);
+  ssl_context.set_options(net::ssl::context::default_workarounds |
+                          net::ssl::context::no_sslv2 |
+                          net::ssl::context::no_sslv3);
 
-  bool const deferring = rt_args.http_request_time_ == http_process_e::deferred;
-
-  // perform DNS record probing.
-  for (std::size_t index = 0; index < native_thread_count; ++index) {
-    net::post(thread_pool, [&] {
-      thread_functor(io_context, ssl_context, rt_args, result_map,
-                     sockets_per_thread, deferring);
-    });
+  decltype(rt_args.names) deferred_names_;
+  if (deferring) { // we need to copy the names before dns probing
+    deferred_names_.emplace(rt_args.names->clone());
   }
-  thread_pool.join();
-
+  {
+    // perform DNS record probing.
+    net::io_context io_context((int)native_thread_count);
+    net::thread_pool thread_pool(native_thread_count);
+    for (std::size_t index = 0; index < native_thread_count; ++index) {
+      net::post(thread_pool, [&] {
+        dns_functor(io_context, ssl_context, rt_args, result_map,
+                    sockets_per_thread, deferring);
+      });
+    }
+    thread_pool.join();
+  }
   // if we had defer HTTP/S "probe", now is the time to get to it
-  if (!deferring) {
+  if (deferring) {
+    net::thread_pool thread_pool(native_thread_count);
+    rt_args.names.emplace(std::move(*deferred_names_));
+    net::io_context io_context((int)native_thread_count);
+    for (std::size_t index = 0; index < native_thread_count; ++index) {
+      net::post(thread_pool, [&] {
+        http_functor(io_context, ssl_context, rt_args, result_map,
+                     sockets_per_thread);
+      });
+    }
+    thread_pool.join();
   }
 
   write_json_result(result_map, rt_args);
@@ -442,7 +502,7 @@ void run_program(cli_args_t const &cli_args) {
   rt_args.resolvers.emplace(std::move(resolver_eps));
   rt_args.http_request_time_ =
       static_cast<http_process_e>(cli_args.post_http_request);
-
+  rt_args.thread_count = cli_args.thread_count;
   return start_name_checking(std::move(rt_args));
 }
 } // namespace dooked

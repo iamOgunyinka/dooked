@@ -29,7 +29,7 @@ class custom_resolver_socket_t {
   resolver_address_list_t &resolvers_;
   map_container_t<dns_record_t> &result_map_;
   resolver_address_t current_resolver_{};
-  bool perform_http_too_ = true;
+  bool deferring_http_request_ = false;
 
 private:
   domain_list_t::value_type name_{};
@@ -59,7 +59,7 @@ public:
   custom_resolver_socket_t(net::io_context &, net::ssl::context &,
                            domain_list_t &, resolver_address_list_t &,
                            map_container_t<dns_record_t> &);
-  void defer_http_request(bool const perform);
+  void defer_http_request(bool const defer);
   void start();
 };
 

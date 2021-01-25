@@ -109,8 +109,8 @@ custom_resolver_socket_t::custom_resolver_socket_t(
       supported_dns_record_size_{
           dns_supported_record_type_t::supported_types.size()} {}
 
-void custom_resolver_socket_t::defer_http_request(bool const perform) {
-  perform_http_too_ = perform;
+void custom_resolver_socket_t::defer_http_request(bool const defer) {
+  deferring_http_request_ = defer;
 }
 
 void custom_resolver_socket_t::start() { send_next_request(); }
@@ -122,7 +122,7 @@ void custom_resolver_socket_t::send_next_request() {
     }
     current_rec_type_ = next_record_type();
     if (current_rec_type_ == dns_record_type_e::DNS_REC_UNDEFINED) {
-      if (perform_http_too_) {
+      if (!deferring_http_request_) {
         return perform_http_request();
       }
       names_.next_item();
@@ -141,19 +141,8 @@ void custom_resolver_socket_t::send_next_request() {
 }
 
 void custom_resolver_socket_t::continue_dns_probe() {
-  try {
-    http_redirects_count_ = http_retries_count_ = 0;
-    names_.next_item();
-    current_rec_type_ = next_record_type();
-    auto const query_id = get_random_integer();
-    auto const query_type = static_cast<std::uint16_t>(current_rec_type_);
-    send_buffer_.clear();
-    create_query(name_, query_type, query_id, send_buffer_);
-    send_network_request();
-  } catch (empty_container_exception_t const &) {
-  } catch (bad_name_exception_t const &except) {
-    spdlog::error(except.what());
-  }
+  name_.clear();
+  send_next_request();
 }
 
 void custom_resolver_socket_t::send_network_request() {
@@ -253,21 +242,19 @@ void custom_resolver_socket_t::tcp_request_result(
     std::string const &response_string) {
 
   switch (rt) {
-  case response_type_e::bad_request:
+  case response_type_e::bad_request: {
     result_map_.insert(name_, content_length, 400);
     return continue_dns_probe();
+  }
+  case response_type_e::forbidden: {
+    result_map_.insert(name_, content_length, 403);
+    return continue_dns_probe();
+  }
   case response_type_e::cannot_connect:
   case response_type_e::cannot_resolve_name:
-  case response_type_e::cannot_send:
-    result_map_.insert(name_, 0, 503);
+  case response_type_e::cannot_send: {
+    result_map_.insert(name_, 0, static_cast<int>(rt));
     return continue_dns_probe();
-  case response_type_e::expected_http_only: {
-    auto &http_request =
-        http_request_handler_->request_.emplace<http_request_handler_t>(io_,
-                                                                        name_);
-    http_request.start(beast::bind_front_handler(
-        &custom_resolver_socket_t::tcp_request_result, this));
-    return;
   }
   case response_type_e::http_redirected: {
     ++http_redirects_count_;
@@ -278,10 +265,10 @@ void custom_resolver_socket_t::tcp_request_result(
     auto &http_request =
         http_request_handler_->request_.emplace<http_request_handler_t>(
             io_, uri{response_string}.host());
-    http_request.start([this](auto const rt, auto const len, auto const &rstr) {
-      tcp_request_result(rt, len, rstr);
-    });
-    return;
+    return http_request.start(
+        [this](auto const rt, auto const len, auto const &rstr) {
+          tcp_request_result(rt, len, rstr);
+        });
   }
   case response_type_e::https_redirected: {
     ++http_redirects_count_;
@@ -297,67 +284,70 @@ void custom_resolver_socket_t::tcp_request_result(
           tcp_request_result(rt, len, rstr);
         });
   }
-  case response_type_e::not_found: // HTTP(S) 404
+  case response_type_e::not_found: { // HTTP(S) 404
     result_map_.insert(name_, content_length, 404);
     return continue_dns_probe();
-  case response_type_e::ok:
+  }
+  case response_type_e::ok: {
     result_map_.insert(name_, content_length, 200);
     return continue_dns_probe();
-  case response_type_e::recv_timed_out: // retry, wait timeout
-  {
+  }
+  case response_type_e::recv_timed_out: { // retry, wait timeout
     ++http_retries_count_;
     if (http_retries_count_ > 5) {
-      result_map_.insert(name_, 0, 503);
+      result_map_.insert(name_, 0, static_cast<int>(rt));
       return continue_dns_probe();
     }
     auto http_socket_type =
         std::get_if<http_request_handler_t>(&(http_request_handler_->request_));
     if (http_socket_type) {
-      auto resolved_ips = http_socket_type->resolved_addresses();
       auto &req =
           http_request_handler_->request_.emplace<http_request_handler_t>(
-              io_, uri{response_string}.host(), std::move(resolved_ips));
+              io_, uri{response_string}.host());
       req.start([this](auto const rt, auto const len, auto const &rstr) {
         tcp_request_result(rt, len, rstr);
       });
     } else {
-      auto resolved_ips =
-          std::get<https_request_handler_t>(http_request_handler_->request_)
-              .resolved_addresses();
       auto &req =
           http_request_handler_->request_.emplace<https_request_handler_t>(
-              io_, ssl_context_, response_string, std::move(resolved_ips));
+              io_, ssl_context_, response_string);
       req.start([this](auto const rt, auto const len, auto const &rstr) {
         tcp_request_result(rt, len, rstr);
       });
     }
     return;
   }
-  case response_type_e::server_error:
+  case response_type_e::ssl_change_context:
+  case response_type_e::ssl_handshake_failed: {
+    // to-do
+    return continue_dns_probe();
+  }
+  case response_type_e::ssl_change_to_http: {
+    auto &req = http_request_handler_->request_.emplace<http_request_handler_t>(
+        io_, name_);
+    req.start([this](auto const rt, auto const len, auto const &rstr) {
+      tcp_request_result(rt, len, rstr);
+    });
+    return;
+  }
+  case response_type_e::server_error: {
     result_map_.insert(name_, content_length, 503);
     return continue_dns_probe();
-  default:
+  }
+  default: {
     result_map_.insert(name_, 0, 0);
     return continue_dns_probe();
   }
+  } // end switch
 }
 
 void custom_resolver_socket_t::perform_http_request() {
   auto const &result = result_map_.cresult();
   auto const iter = result.find(name_);
   http_request_handler_.emplace();
-  std::vector<std::string> resolved_names{};
-  if (iter != result.cend()) {
-    for (auto const &item : iter->second.dns_result_list_) {
-      if (item.type == dns_record_type_e::DNS_REC_A ||
-          item.type == dns_record_type_e::DNS_REC_AAAA) {
-        resolved_names.push_back(item.rdata);
-      }
-    }
-  }
   auto &https_request =
       http_request_handler_->request_.emplace<https_request_handler_t>(
-          io_, ssl_context_, name_, std::move(resolved_names));
+          io_, ssl_context_, name_);
   https_request.start([this](response_type_e const rt, int const content_length,
                              std::string const &response) {
     tcp_request_result(rt, content_length, response);

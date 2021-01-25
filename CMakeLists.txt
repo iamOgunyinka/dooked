@@ -1,11 +1,27 @@
 cmake_minimum_required(VERSION 3.0.0 FATAL_ERROR)
 
 # Project
-get_filename_component(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+get_filename_component(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dooked" ABSOLUTE)
+
+#### find: Boost Lib
+set(Boost_USE_STATIC_LIBS OFF) 
+set(Boost_USE_MULTITHREADED ON)  
+set(Boost_USE_STATIC_RUNTIME OFF) 
+find_package(Boost 1.73.0 COMPONENTS)
+
+if(Boost_FOUND)
+    include_directories(${Boost_INCLUDE_DIRS}) 
+endif()
+
+###########################
+
 set(PROJECT_NAME dooked)
 include_directories(${PROJECT_DIR}/include)
 include_directories(${PROJECT_DIR}/third-party/include)
-link_libraries(pthread)
+
+
+link_directories(/usr/lib)
+link_libraries(pthread ssl crypto)
 
 # Outputs
 set(OUTPUT_DEBUG ${PROJECT_DIR}/bin)
@@ -44,12 +60,14 @@ message("${PROJECT_NAME}: CURR BIN DIR: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Source Files
 set(SRC_FILES
-    ./dooked.cpp
     ./source/dns.cpp
     ./source/preprocessor.cpp
     ./source/resolver.cpp
+    ./source/requests.cpp
     ./source/ucstring.cpp
     ./source/utils.cpp
+    ./source/http_resolver.cpp
+    ./dooked.cpp
 )
 
 source_group("Sources" FILES ${SRC_FILES})
@@ -59,8 +77,10 @@ set(HEADERS_FILES
     ./include/dns.hpp
     ./include/preprocessor.hpp
     ./include/resolver.hpp
+    ./include/requests.hpp
     ./include/tdefines.hpp
     ./include/ucstring.hpp
+    ./include/http_resolver.hpp
     ./include/utils.hpp
 )
 

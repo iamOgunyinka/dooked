@@ -10,11 +10,8 @@ int main(int argc, char **argv) {
 
   app.add_option("-o,--output", cli_args.output_filename,
                  "write result to output file");
-  app.add_flag(
-      "--defer", cli_args.post_http_request,
-      "defers http request until after all DNS requests have been completed");
   app.add_option(
-      "-t,--file-type", cli_args.file_type,
+      "-f,--file-type", cli_args.file_type,
       "the file type used as input file: (default)txt=0, txt=1, unknown=2");
   app.add_option(
       "-i,--input-file", cli_args.input_filename,
@@ -25,9 +22,12 @@ int main(int argc, char **argv) {
   app.add_option("-r,--resolver", cli_args.resolver,
                  "a (possible) list of resolvers separated by comma. If -rl "
                  "and -r isn't specified, -r is defaulted to 8.8.8.8");
-  app.add_flag("-d", cli_args.include_date,
+  app.add_option("-t,--threads", cli_args.thread_count, "total threads to use");
+  app.add_flag("-d,--include-date", cli_args.include_date,
                "append present datetime(-ddMMyyyy_hhmmss) in output name");
-
+  app.add_flag(
+      "--defer", cli_args.post_http_request,
+      "defers http request until after all DNS requests have been completed");
   CLI11_PARSE(app, argc, argv);
 
   dooked::run_program(cli_args);
