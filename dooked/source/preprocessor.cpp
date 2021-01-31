@@ -42,19 +42,106 @@ bool case_insensitive_compare(std::string const &a, std::string const &b) {
                     });
 }
 
+void compare_http_result(int const content_length) {}
+
+[[nodiscard]] std::vector<json_data_t>::const_iterator
+compare_dns_result(std::vector<json_data_t>::const_iterator iter,
+                   std::vector<json_data_t>::const_iterator end_iter,
+                   std::vector<dns_record_t> const &current_domain_info_list,
+                   int const content_length,
+                   jd_domain_comparator_t const &domain_comparator) {
+
+  auto const last_elem_iter =
+      std::upper_bound(iter, end_iter, *iter, domain_comparator);
+  auto const previous_total_elem =
+      (std::size_t)std::distance(iter, last_elem_iter);
+  auto const current_total_elem = current_domain_info_list.size();
+
+  // something is missing
+  if (current_total_elem < previous_total_elem) {
+    for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
+      bool const found = std::binary_search(
+          current_domain_info_list.cbegin(), current_domain_info_list.cend(),
+          *start_iter, [](auto const &a, auto const &b) {
+            return a.type == b.type &&
+                   case_insensitive_compare(a.rdata, b.rdata);
+          });
+      if (!found) {
+        spdlog::error("[MISSING][{}][{}] `{}`", iter->domain_name,
+                      dns_record_type2str(start_iter->type), start_iter->rdata);
+      }
+    }
+    // information may have been changed
+  } else if (current_total_elem == previous_total_elem) {
+    for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
+      auto const eq_range = std::equal_range(
+          current_domain_info_list.cbegin(), current_domain_info_list.cend(),
+          *start_iter,
+          [](auto const &a, auto const &b) { return a.type < b.type; });
+      auto const find_iter = std::find_if(
+          eq_range.first, eq_range.second,
+          [&val = *start_iter](dns_record_t const &record) {
+            return case_insensitive_compare(val.rdata, record.rdata);
+          });
+      // one of the previous record wasn't found
+      if (find_iter == eq_range.second) {
+        if (std::distance(eq_range.first, eq_range.second) == 1) {
+          spdlog::info("[CHANGED][{}][{}] from `{}` to `{}`", iter->domain_name,
+                       dns_record_type2str(start_iter->type), start_iter->rdata,
+                       eq_range.first->rdata);
+        } else {
+          spdlog::error("[REMOVED][{}][{}] `{}`", iter->domain_name,
+                        dns_record_type2str(start_iter->type),
+                        start_iter->rdata);
+        }
+      }
+    }
+    // look for information in this new result not present in old result
+    for (auto const &new_item : current_domain_info_list) {
+      auto find_iter =
+          std::find_if(iter, last_elem_iter, [&new_item](auto const &old_item) {
+            return case_insensitive_compare(old_item.rdata, new_item.rdata);
+          });
+      if (find_iter == last_elem_iter) {
+        spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
+                     dns_record_type2str(new_item.type), new_item.rdata);
+      }
+    }
+  } else {
+    // new information has been added
+    for (auto const &current_elem : current_domain_info_list) {
+      bool const found = std::binary_search(
+          iter, last_elem_iter, current_elem, [](auto const &a, auto const &b) {
+            return a.type == b.type &&
+                   case_insensitive_compare(a.rdata, b.rdata);
+          });
+      if (!found) {
+        spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
+                     dns_record_type2str(current_elem.type),
+                     current_elem.rdata);
+      }
+    }
+  }
+  compare_http_result(content_length);
+  return last_elem_iter;
+}
+
 void compare_results(std::vector<json_data_t> const &previous_result,
-                     map_container_t<dns_record_t> const &current_result) {
+                     map_container_t<dns_record_t> const &current_result,
+                     int const content_length) {
 #ifdef _DEBUG
   spdlog::info("Trying to compare old with new result");
 #endif // _DEBUG
+
   // previous data is already sorted.
   // current data is a pre-sorted data.
   auto const &current_data_map = current_result.cresult();
   auto const end_iter = previous_result.cend();
   auto const domain_comparator = jd_domain_comparator_t{};
 
-  // %^ designate color start, while %$ designates the end of color
-  // %v is the message we want to log
+  // %^ designate color start,
+  // %$ designates the end of color,
+  // %v is the message we want to log.
   spdlog::set_pattern("[%^CHECK%$] %v");
 
   for (auto iter = previous_result.cbegin(); iter < end_iter;) {
@@ -67,81 +154,10 @@ void compare_results(std::vector<json_data_t> const &previous_result,
     }
     auto const &current_domain_info_list =
         current_find_iter->second.dns_result_list_;
-    auto const last_elem_iter =
-        std::upper_bound(iter, end_iter, *iter, domain_comparator);
-    auto const previous_total_elem = std::distance(iter, last_elem_iter);
-    auto const current_total_elem = current_domain_info_list.size();
-
-    // something is missing
-    if (current_total_elem < previous_total_elem) {
-      for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
-        bool const found = std::binary_search(
-            current_domain_info_list.cbegin(), current_domain_info_list.cend(),
-            *start_iter, [](auto const &a, auto const &b) {
-              return a.type == b.type &&
-                     case_insensitive_compare(a.rdata, b.rdata);
-            });
-        if (!found) {
-          spdlog::error("[MISSING][{}][{}] `{}`", iter->domain_name,
-                        dns_record_type2str(start_iter->type),
-                        start_iter->rdata);
-        }
-      }
-      // information may have been changed
-    } else if (current_total_elem == previous_total_elem) {
-
-      for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
-        auto const eq_range = std::equal_range(
-            current_domain_info_list.cbegin(), current_domain_info_list.cend(),
-            *start_iter,
-            [](auto const &a, auto const &b) { return a.type < b.type; });
-        auto const find_iter = std::find_if(
-            eq_range.first, eq_range.second,
-            [&val = *start_iter](dns_record_t const &record) {
-              return case_insensitive_compare(val.rdata, record.rdata);
-            });
-        // one of the previous record wasn't found
-        if (find_iter == eq_range.second) {
-          if (std::distance(eq_range.first, eq_range.second) == 1) {
-            spdlog::info("[CHANGED][{}][{}] from `{}` to `{}`",
-                         iter->domain_name,
-                         dns_record_type2str(start_iter->type),
-                         start_iter->rdata, eq_range.first->rdata);
-          } else {
-            spdlog::error("[REMOVED][{}][{}] `{}`", iter->domain_name,
-                          dns_record_type2str(start_iter->type),
-                          start_iter->rdata);
-          }
-        }
-      }
-      // look for information in this new result not present in old result
-      for (auto const &new_item : current_domain_info_list) {
-        auto find_iter = std::find_if(
-            iter, last_elem_iter, [&new_item](auto const &old_item) {
-              return case_insensitive_compare(old_item.rdata, new_item.rdata);
-            });
-        if (find_iter == last_elem_iter) {
-          spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
-                       dns_record_type2str(new_item.type), new_item.rdata);
-        }
-      }
-    } else {
-      // or new information added
-      for (auto const &current_elem : current_domain_info_list) {
-        bool const found = std::binary_search(
-            iter, last_elem_iter, current_elem,
-            [](auto const &a, auto const &b) {
-              return a.type == b.type &&
-                     case_insensitive_compare(a.rdata, b.rdata);
-            });
-        if (!found) {
-          spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
-                       dns_record_type2str(current_elem.type),
-                       current_elem.rdata);
-        }
-      }
-    }
-    iter = last_elem_iter;
+    auto next_iter =
+        compare_dns_result(iter, end_iter, current_domain_info_list,
+                           content_length, domain_comparator);
+    iter = next_iter;
   }
 }
 
@@ -156,7 +172,8 @@ std::string code_string(int const http_status_code) {
     return "unable to send GET request to domain name";
   } else if (http_status_code == 309) {
     return "too many redirection(>10)";
-  } else if (http_status_code == (int)response_type_e::not_found) {
+  } else if (http_status_code == (int)response_type_e::not_found ||
+             http_status_code == 404) {
     return "404 - Not found";
   } else if (http_status_code == (int)response_type_e::bad_request) {
     return "400 - Bad request";
@@ -204,7 +221,7 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   rt_args.output_file->close();
 }
 
-void dns_functor(net::io_context &io_context, net::ssl::context &ssl_context,
+void dns_functor(net::io_context &io_context, net::ssl::context *ssl_context,
                  runtime_args_t &rt_args,
                  map_container_t<dns_record_t> &result_map,
                  std::size_t const socket_count, bool const deferring) {
@@ -220,7 +237,7 @@ void dns_functor(net::io_context &io_context, net::ssl::context &ssl_context,
   io_context.run();
 }
 
-void http_functor(net::io_context &io_context, net::ssl::context &ssl_context,
+void http_functor(net::io_context &io_context, net::ssl::context *ssl_context,
                   runtime_args_t &rt_args,
                   map_container_t<dns_record_t> &result_map,
                   std::size_t const socket_count) {
@@ -325,56 +342,61 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
 void start_name_checking(runtime_args_t &&rt_args) {
   std::size_t const user_specified_thread =
       (rt_args.thread_count > 0) ? (std::size_t)rt_args.thread_count
-                                 : std::thread::hardware_concurrency();
-  auto const native_thread_count =
+                                 : DOOKER_SUPPORTED_THREADS;
+  auto const thread_count =
       (std::min)(rt_args.names->size(), user_specified_thread);
 
   auto const max_open_sockets =
-      (std::min)(rt_args.names->size(), (std::size_t)32);
+      (std::min)(rt_args.names->size(), DOOKER_MAX_OPEN_SOCKET);
   // minimum of 1 socket per thread
-  std::size_t const sockets_per_thread = (std::max)(
-      (std::size_t)1, std::size_t(max_open_sockets / native_thread_count));
+  auto const sockets_per_thread =
+      (std::max)(1, (int)(max_open_sockets / thread_count));
+
 #ifdef _DEBUG
-  spdlog::info("Native thread count: {}", native_thread_count);
+  spdlog::info("Native thread count: {}", thread_count);
   spdlog::info("Sockets per thread: {}", sockets_per_thread);
   spdlog::info("Total input: {}", rt_args.names->size());
 #endif // _DEBUG
 
-  bool const using_lock = (native_thread_count > 1);
+  bool const using_lock = (thread_count > 1);
   map_container_t<dns_record_t> result_map(using_lock);
   bool const deferring = rt_args.http_request_time_ == http_process_e::deferred;
 
+  // by default, we use tls v1.2, and only switch to 1.3 if 1.2 fails
   net::ssl::context ssl_context(net::ssl::context::tlsv12_client);
   ssl_context.set_default_verify_paths();
   ssl_context.set_verify_mode(net::ssl::verify_none);
   ssl_context.set_options(net::ssl::context::default_workarounds |
                           net::ssl::context::no_sslv2 |
                           net::ssl::context::no_sslv3);
-
   decltype(rt_args.names) deferred_names_;
-  if (deferring) { // we need to copy the names before dns probing
+
+  if (deferring) { // copy the names before dns probing
     deferred_names_.emplace(rt_args.names->clone());
   }
-  {
-    // perform DNS record probing.
-    net::io_context io_context((int)native_thread_count);
-    net::thread_pool thread_pool(native_thread_count);
-    for (std::size_t index = 0; index < native_thread_count; ++index) {
+
+  // we need to construct different I/O context for DNS and HTTP
+  // probing, so we introduce a scope.
+  { // perform DNS record probing.
+    net::io_context io_context((int)thread_count);
+    net::thread_pool thread_pool(thread_count);
+    for (std::size_t index = 0; index < thread_count; ++index) {
       net::post(thread_pool, [&] {
-        dns_functor(io_context, ssl_context, rt_args, result_map,
+        dns_functor(io_context, &ssl_context, rt_args, result_map,
                     sockets_per_thread, deferring);
       });
     }
     thread_pool.join();
   }
-  // if we had defer HTTP/S "probe", now is the time to get to it
+
+  // if we deferred HTTP/S "probe", now is the time to get to it
   if (deferring) {
-    net::thread_pool thread_pool(native_thread_count);
     rt_args.names.emplace(std::move(*deferred_names_));
-    net::io_context io_context((int)native_thread_count);
-    for (std::size_t index = 0; index < native_thread_count; ++index) {
+    net::io_context io_context((int)thread_count);
+    net::thread_pool thread_pool(thread_count);
+    for (std::size_t index = 0; index < thread_count; ++index) {
       net::post(thread_pool, [&] {
-        http_functor(io_context, ssl_context, rt_args, result_map,
+        http_functor(io_context, &ssl_context, rt_args, result_map,
                      sockets_per_thread);
       });
     }
@@ -401,7 +423,8 @@ void start_name_checking(runtime_args_t &&rt_args) {
                   return std::tie(a.type, a.rdata) < std::tie(b.type, b.rdata);
                 });
     }
-    return compare_results(*rt_args.previous_data, result_map);
+    return compare_results(*rt_args.previous_data, result_map,
+                           rt_args.content_length);
   }
 }
 
@@ -503,6 +526,7 @@ void run_program(cli_args_t const &cli_args) {
   rt_args.http_request_time_ =
       static_cast<http_process_e>(cli_args.post_http_request);
   rt_args.thread_count = cli_args.thread_count;
+  rt_args.content_length = cli_args.content_length;
   return start_name_checking(std::move(rt_args));
 }
 } // namespace dooked

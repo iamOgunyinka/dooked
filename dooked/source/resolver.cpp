@@ -101,13 +101,13 @@ void create_query(std::string const &name, std::uint16_t record_type,
 }
 
 custom_resolver_socket_t::custom_resolver_socket_t(
-    net::io_context &io_context, net::ssl::context &ssl_context,
+    net::io_context &io_context, net::ssl::context *ssl_context,
     domain_list_t &domain_list, resolver_address_list_t &resolvers,
     map_container_t<dns_record_t> &result_map)
-    : io_{io_context}, ssl_context_{ssl_context}, names_{domain_list},
-      resolvers_{resolvers}, result_map_{result_map},
-      supported_dns_record_size_{
-          dns_supported_record_type_t::supported_types.size()} {}
+    : io_{io_context}, names_{domain_list}, resolvers_{resolvers},
+      result_map_{result_map}, ssl_context_{ssl_context},
+      supported_dns_record_size_(
+          dns_supported_record_type_t::supported_types.size()) {}
 
 void custom_resolver_socket_t::defer_http_request(bool const defer) {
   deferring_http_request_ = defer;
@@ -142,6 +142,7 @@ void custom_resolver_socket_t::send_next_request() {
 
 void custom_resolver_socket_t::continue_dns_probe() {
   name_.clear();
+  http_redirects_count_ = http_retries_count_ = 0;
   send_next_request();
 }
 
@@ -166,7 +167,7 @@ void custom_resolver_socket_t::receive_network_data() {
   }
 
   udp_stream_->async_receive_from(
-      net::buffer(&recv_buffer_[0], receive_buf_size), *default_ep_,
+      net::buffer(&recv_buffer_[0], receive_buf_size), current_resolver_.ep,
       [this](auto const err_code, std::size_t const bytes_received) {
         if (bytes_received == 0 || err_code == net::error::operation_aborted) {
           udp_stream_.reset();
@@ -176,7 +177,7 @@ void custom_resolver_socket_t::receive_network_data() {
         }
       });
 
-  timer_.emplace(io_, std::chrono::seconds(5));
+  timer_.emplace(io_, std::chrono::seconds(DOOKED_MAX_DNS_WAIT_TIME));
   timer_->async_wait([=](auto const error_code) {
     // if the response took more than 5seconds, cancel and resend
     if (!error_code) {
@@ -237,6 +238,40 @@ void custom_resolver_socket_t::serialize_packet(dns_packet_t const &packet) {
   }
 }
 
+void custom_resolver_socket_t::send_http_request(std::string const &address) {
+  auto &http_request =
+      http_request_handler_->request_.emplace<http_request_handler_t>(
+          io_, uri{address}.host());
+  http_request.start([this](response_type_e const rt, int const content_length,
+                            std::string const &response) {
+    tcp_request_result(rt, content_length, response);
+  });
+}
+
+void custom_resolver_socket_t::send_https_request(std::string const &address) {
+  auto &https_request =
+      http_request_handler_->request_.emplace<https_request_handler_t>(
+          io_, *ssl_context_, uri{address}.host());
+  return https_request.start(
+      [this](auto const rt, auto const len, auto const &rstr) {
+        tcp_request_result(rt, len, rstr);
+      });
+}
+
+void custom_resolver_socket_t::on_http_resolve_error() {
+  // by default we do http resolve first, that may fail if the
+  // address is strictly HTTPS, so let's resolve to HTTPS
+  auto https_socket_type =
+      std::get_if<https_request_handler_t>(&(http_request_handler_->request_));
+  if (!https_socket_type) {
+    return send_https_request(name_);
+  }
+  // if we are here, we must have tried https too and it fails.
+  result_map_.insert(name_, 0,
+                     static_cast<int>(response_type_e::cannot_resolve_name));
+  return continue_dns_probe();
+}
+
 void custom_resolver_socket_t::tcp_request_result(
     response_type_e const rt, int const content_length,
     std::string const &response_string) {
@@ -250,8 +285,10 @@ void custom_resolver_socket_t::tcp_request_result(
     result_map_.insert(name_, content_length, 403);
     return continue_dns_probe();
   }
+  case response_type_e::cannot_resolve_name: {
+    return on_http_resolve_error();
+  }
   case response_type_e::cannot_connect:
-  case response_type_e::cannot_resolve_name:
   case response_type_e::cannot_send: {
     result_map_.insert(name_, 0, static_cast<int>(rt));
     return continue_dns_probe();
@@ -262,13 +299,7 @@ void custom_resolver_socket_t::tcp_request_result(
       result_map_.insert(name_, 0, 309);
       return continue_dns_probe();
     }
-    auto &http_request =
-        http_request_handler_->request_.emplace<http_request_handler_t>(
-            io_, uri{response_string}.host());
-    return http_request.start(
-        [this](auto const rt, auto const len, auto const &rstr) {
-          tcp_request_result(rt, len, rstr);
-        });
+    return send_http_request(response_string);
   }
   case response_type_e::https_redirected: {
     ++http_redirects_count_;
@@ -276,13 +307,7 @@ void custom_resolver_socket_t::tcp_request_result(
       result_map_.insert(name_, 0, 309);
       return continue_dns_probe();
     }
-    auto &https_request =
-        http_request_handler_->request_.emplace<https_request_handler_t>(
-            io_, ssl_context_, uri{response_string}.host());
-    return https_request.start(
-        [this](auto const rt, auto const len, auto const &rstr) {
-          tcp_request_result(rt, len, rstr);
-        });
+    return send_https_request(response_string);
   }
   case response_type_e::not_found: { // HTTP(S) 404
     result_map_.insert(name_, content_length, 404);
@@ -301,21 +326,10 @@ void custom_resolver_socket_t::tcp_request_result(
     auto http_socket_type =
         std::get_if<http_request_handler_t>(&(http_request_handler_->request_));
     if (http_socket_type) {
-      auto &req =
-          http_request_handler_->request_.emplace<http_request_handler_t>(
-              io_, uri{response_string}.host());
-      req.start([this](auto const rt, auto const len, auto const &rstr) {
-        tcp_request_result(rt, len, rstr);
-      });
+      return send_http_request(response_string);
     } else {
-      auto &req =
-          http_request_handler_->request_.emplace<https_request_handler_t>(
-              io_, ssl_context_, response_string);
-      req.start([this](auto const rt, auto const len, auto const &rstr) {
-        tcp_request_result(rt, len, rstr);
-      });
+      return send_https_request(response_string);
     }
-    return;
   }
   case response_type_e::ssl_change_context:
   case response_type_e::ssl_handshake_failed: {
@@ -323,12 +337,7 @@ void custom_resolver_socket_t::tcp_request_result(
     return continue_dns_probe();
   }
   case response_type_e::ssl_change_to_http: {
-    auto &req = http_request_handler_->request_.emplace<http_request_handler_t>(
-        io_, name_);
-    req.start([this](auto const rt, auto const len, auto const &rstr) {
-      tcp_request_result(rt, len, rstr);
-    });
-    return;
+    return send_http_request(name_);
   }
   case response_type_e::server_error: {
     result_map_.insert(name_, content_length, 503);
@@ -345,13 +354,7 @@ void custom_resolver_socket_t::perform_http_request() {
   auto const &result = result_map_.cresult();
   auto const iter = result.find(name_);
   http_request_handler_.emplace();
-  auto &https_request =
-      http_request_handler_->request_.emplace<https_request_handler_t>(
-          io_, ssl_context_, name_);
-  https_request.start([this](response_type_e const rt, int const content_length,
-                             std::string const &response) {
-    tcp_request_result(rt, content_length, response);
-  });
+  send_http_request(name_);
 }
 
 std::uint16_t uint16_value(unsigned char const *buff) {

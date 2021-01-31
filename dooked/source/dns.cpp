@@ -720,4 +720,8 @@ void dns_extract_query_result(int const answer_count, dns_packet_t &packet,
   }
 }
 
+bool operator==(dns_record_t const &a, dns_record_t const &b) {
+  return case_insensitive_compare(a.rdata, b.rdata) && (a.type == b.type);
+}
+
 } // namespace dooked

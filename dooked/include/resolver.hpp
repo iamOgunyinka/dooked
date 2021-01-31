@@ -7,6 +7,9 @@
 #include <boost/asio/steady_timer.hpp>
 #include <optional>
 
+// max dns wait time in seconds
+#define DOOKED_MAX_DNS_WAIT_TIME 5
+
 namespace dooked {
 namespace net = boost::asio;
 
@@ -19,15 +22,16 @@ struct dns_supported_record_type_t {
 
 class custom_resolver_socket_t {
   net::io_context &io_;
-  net::ssl::context &ssl_context_;
+  domain_list_t &names_;
+  resolver_address_list_t &resolvers_;
+  map_container_t<dns_record_t> &result_map_;
+
+  net::ssl::context *ssl_context_;
   std::optional<udp_stream_t> udp_stream_;
   std::optional<net::ip::udp::endpoint> default_ep_;
   std::optional<net::steady_timer> timer_;
   std::optional<request_t> http_request_handler_;
 
-  domain_list_t &names_;
-  resolver_address_list_t &resolvers_;
-  map_container_t<dns_record_t> &result_map_;
   resolver_address_t current_resolver_{};
   bool deferring_http_request_ = false;
 
@@ -55,8 +59,13 @@ private:
   void continue_dns_probe();
   void tcp_request_result(response_type_e, int, std::string const &);
 
+private:
+  void on_http_resolve_error();
+  void send_https_request(std::string const &address);
+  void send_http_request(std::string const &address);
+
 public:
-  custom_resolver_socket_t(net::io_context &, net::ssl::context &,
+  custom_resolver_socket_t(net::io_context &, net::ssl::context *,
                            domain_list_t &, resolver_address_list_t &,
                            map_container_t<dns_record_t> &);
   void defer_http_request(bool const defer);

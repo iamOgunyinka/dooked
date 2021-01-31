@@ -2,6 +2,11 @@
 
 #include "resolver.hpp"
 
+// maximum sockets to open regardless of the number of threads
+// supported by the hardware
+#define DOOKER_SUPPORTED_THREADS (std::thread::hardware_concurrency())
+#define DOOKER_MAX_OPEN_SOCKET ((std::size_t)(DOOKER_SUPPORTED_THREADS * 2))
+
 namespace dooked {
 
 struct json_data_t {
@@ -42,11 +47,10 @@ struct runtime_args_t {
   std::string output_filename{};
   http_process_e http_request_time_;
   int thread_count = 0;
+  int content_length = -1;
 };
 
 void to_json(json &j, dns_record_t const &record);
-void compare_results(std::vector<json_data_t> const &previous_result,
-                     map_container_t<dns_record_t> const &current_result);
 void write_json_result(map_container_t<dns_record_t> const &result_map,
                        runtime_args_t const &rt_args);
 void start_name_checking(runtime_args_t &&rt_args);

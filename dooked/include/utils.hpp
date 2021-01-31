@@ -36,6 +36,7 @@ struct cli_args_t {
   int file_type = static_cast<int>(file_type_e::txt_type);
   int post_http_request = static_cast<int>(http_process_e::in_place);
   int thread_count = 0;
+  int content_length = -1;
   bool include_date = false;
 };
 
@@ -62,7 +63,6 @@ public:
 
 // contains result for all searches.
 template <typename ValueType> class map_container_t {
-
   struct response_t {
     int content_length_{};
     int http_status_ = 0;
@@ -70,6 +70,14 @@ template <typename ValueType> class map_container_t {
   };
   std::map<std::string, response_t> map_;
   std::optional<std::mutex> opt_mutex_;
+
+  void append_impl(std::string const &key, ValueType const &value) {
+    auto &container = map_[key].dns_result_list_;
+    auto iter = std::find(container.cbegin(), container.cend(), value);
+    if (iter == container.cend()) {
+      container.push_back(value);
+    }
+  }
 
 public:
   map_container_t(bool use_lock = false) : map_{}, opt_mutex_{} {
@@ -80,11 +88,11 @@ public:
   // needed by different threads
   void append(std::string const &key, ValueType const &value) {
     if (!opt_mutex_) {
-      map_[key].dns_result_list_.push_back(value);
-      return;
+      return append_impl(key, value);
     }
+    // lock before doing any insertion
     std::lock_guard<std::mutex> lock_g{*opt_mutex_};
-    map_[key].dns_result_list_.push_back(value);
+    append_impl(key, value);
   }
 
   void insert(std::string const &name, int const len, int const http_status) {

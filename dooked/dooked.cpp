@@ -23,13 +23,16 @@ int main(int argc, char **argv) {
                  "a (possible) list of resolvers separated by comma. If -rl "
                  "and -r isn't specified, -r is defaulted to 8.8.8.8");
   app.add_option("-t,--threads", cli_args.thread_count, "total threads to use");
+  app.add_option(
+      "-c,--content-length", cli_args.content_length,
+      "show content lengths that changed more than --content-length");
   app.add_flag("-d,--include-date", cli_args.include_date,
                "append present datetime(-ddMMyyyy_hhmmss) in output name");
   app.add_flag(
       "--defer", cli_args.post_http_request,
       "defers http request until after all DNS requests have been completed");
-  CLI11_PARSE(app, argc, argv);
 
+  CLI11_PARSE(app, argc, argv);
   dooked::run_program(cli_args);
   return 0;
 }

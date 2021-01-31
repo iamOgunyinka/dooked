@@ -70,7 +70,7 @@ void http_request_handler_t::establish_connection() {
     return resolve_name();
   }
   socket_.emplace(io_);
-  socket_->expires_after(std::chrono::seconds(5));
+  socket_->expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   socket_->async_connect(
       resolved_ip_addresses_.cbegin(), resolved_ip_addresses_.cend(),
       [=](auto const &ec, auto const &) { on_connected(ec); });
@@ -119,7 +119,7 @@ void http_request_handler_t::reconnect() {
 }
 
 void http_request_handler_t::send_http_data() {
-  socket_->expires_after(std::chrono::seconds(5));
+  socket_->expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   http::async_write(*socket_, *request_,
                     [this](auto const ec, std::size_t const sz) {
                       if (ec) {
@@ -140,7 +140,7 @@ void http_request_handler_t::resend_data() {
 }
 
 void http_request_handler_t::receive_data() {
-  socket_->expires_after(std::chrono::seconds(5));
+  socket_->expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   response_.emplace();
   buffer_ = {};
 
@@ -164,8 +164,8 @@ void http_request_handler_t::on_data_received(
     }
     return;
   }
-  int const status_code = response_->result_int();
-  int const status_code_simple = status_code / 100;
+  auto const http_status_code = response_->result_int();
+  int const status_code_simple = http_status_code / 100;
   std::string response_string{};
 
   if (status_code_simple == 2) {
@@ -182,11 +182,11 @@ void http_request_handler_t::on_data_received(
       }
     }
   } else if (status_code_simple == 4) {
-    if (status_code == 404) {
+    if (http_status_code == 404) {
       response_int = response_type_e::not_found;
-    } else if (status_code == 400) {
+    } else if (http_status_code == 400) {
       response_int = response_type_e::bad_request;
-    } else if (status_code == 403) {
+    } else if (http_status_code == 403) {
       response_int = response_type_e::forbidden;
     }
   } else if (status_code_simple == 5) {
@@ -197,9 +197,14 @@ void http_request_handler_t::on_data_received(
   int content_length = bytes_received;
   if (response_->has_content_length()) {
     try {
-      content_length =
-          std::stoi((*response_)[http::field::content_length].to_string());
+      auto const cl_str = (*response_)[http::field::content_length].to_string();
+      content_length = std::stoi(cl_str);
     } catch (std::exception const &) {
+    }
+  } else {
+    if (auto const body_size = response_->payload_size();
+        body_size.has_value()) {
+      content_length = (int)(*body_size);
     }
   }
   if (callback_) {
@@ -231,7 +236,8 @@ void https_request_handler_t::perform_ssl_ritual() {
 }
 
 void https_request_handler_t::perform_ssl_handshake() {
-  beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(15));
+  beast::get_lowest_layer(*ssl_stream_)
+      .expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   ssl_stream_->async_handshake(
       net::ssl::stream_base::client,
       [=](boost::system::error_code ec) { return on_ssl_handshake(ec); });
@@ -260,7 +266,8 @@ void https_request_handler_t::on_ssl_handshake(
 }
 
 void https_request_handler_t::send_https_data() {
-  beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
+  beast::get_lowest_layer(*ssl_stream_)
+      .expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   http::async_write(
       *ssl_stream_, *get_request_,
       beast::bind_front_handler(&https_request_handler_t::on_data_sent, this));
@@ -291,7 +298,8 @@ void https_request_handler_t::prepare_request_data() {
 void https_request_handler_t::receive_data() {
   response_.emplace();
   recv_buffer_.emplace();
-  beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
+  beast::get_lowest_layer(*ssl_stream_)
+      .expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   http::async_read(*ssl_stream_, *recv_buffer_, *response_,
                    [this](beast::error_code ec, std::size_t const sz) {
                      on_data_received(ec, sz);
@@ -305,7 +313,8 @@ void https_request_handler_t::connect() {
   ssl_stream_.emplace(io_, ssl_context_);
   perform_ssl_ritual();
 
-  beast::get_lowest_layer(*ssl_stream_).expires_after(std::chrono::seconds(10));
+  beast::get_lowest_layer(*ssl_stream_)
+      .expires_after(std::chrono::seconds(DOOKED_MAX_HTTP_WAIT_TIME));
   beast::get_lowest_layer(*ssl_stream_)
       .async_connect(resolved_ip_addresses_.cbegin(),
                      resolved_ip_addresses_.cend(),
@@ -401,8 +410,37 @@ void https_request_handler_t::on_data_received(
   } else {
     response_int = response_type_e::unknown_response;
   }
+
+  int content_length = bytes_received;
+  if (response_->has_content_length()) {
+    try {
+      auto const cl_str = (*response_)[http::field::content_length].to_string();
+      content_length = std::stoi(cl_str);
+    } catch (std::exception const &) {
+    }
+  } else {
+    if (auto const body_size = response_->payload_size();
+        body_size.has_value()) {
+      content_length = (int)(*body_size);
+    }
+  }
   if (callback_) {
-    callback_(response_int, (int)bytes_received, response_string);
+    callback_(response_int, content_length, response_string);
   }
 }
+
+net::ssl::context &get_tlsv13_context() {
+  static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
+  if (!ssl_context) {
+    ssl_context =
+        std::make_unique<net::ssl::context>(net::ssl::context::tlsv13_client);
+    ssl_context->set_default_verify_paths();
+    ssl_context->set_verify_mode(net::ssl::verify_none);
+    ssl_context->set_options(net::ssl::context::default_workarounds |
+                             net::ssl::context::no_sslv2 |
+                             net::ssl::context::no_sslv3);
+  }
+  return *ssl_context;
+}
+
 } // namespace dooked

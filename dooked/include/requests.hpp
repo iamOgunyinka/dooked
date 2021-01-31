@@ -13,6 +13,9 @@
 #include <optional>
 #include <variant>
 
+// max http wait time in seconds
+#define DOOKED_MAX_HTTP_WAIT_TIME 10
+
 namespace dooked {
 namespace net = boost::asio;
 namespace ssl = net::ssl;
@@ -35,6 +38,12 @@ enum class response_type_e : std::uint8_t {
   ssl_change_context = 70,
   ssl_change_to_http = 71,
   ssl_handshake_failed = 72
+};
+
+enum class ssl_method_e {
+  tls_v12 = net::ssl::context::tlsv12_client,
+  tls_v13 = net::ssl::context::tlsv13_client,
+  undefined
 };
 
 using completion_cb_t = std::function<void(response_type_e, int, std::string)>;
@@ -111,4 +120,13 @@ struct request_t {
 struct request_handler_t {
   static std::array<char const *, 14> const user_agents;
 };
+
+struct temporary_ssl_holder_t {
+  ssl::context &tls_v13_context_;
+  ssl::context *original_ssl_context_;
+  temporary_ssl_holder_t(ssl::context &cr, ssl::context *cp)
+      : tls_v13_context_{cr}, original_ssl_context_{cp} {}
+};
+
+net::ssl::context &get_tlsv13_context();
 } // namespace dooked
