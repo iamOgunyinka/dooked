@@ -1,8 +1,15 @@
 // dooked.cpp : This file contains the 'main' function.
 // let's keep as simple a file as it can get
 
-#include "preprocessor.hpp"
+#include "cli_preprocessor.hpp"
 #include <CLI11.hpp>
+
+// we've tried as much as possible to stay away from global variables but
+// in this case, we need to pass this variable down a long long stack of
+// calls and parameterizing a simple bool just isn't worth it and since
+// it is always set and never changes, guess we can swing this.
+
+bool no_bytes_count = false;
 
 int main(int argc, char **argv) {
   CLI::App app{"dooked -- a CLI tool to enumerate DNS info"};
@@ -31,6 +38,10 @@ int main(int argc, char **argv) {
   app.add_flag(
       "--defer", cli_args.post_http_request,
       "defers http request until after all DNS requests have been completed");
+  app.add_flag("--nbc", no_bytes_count,
+               "in case `content-length` is missing in an HTTP header field,"
+               "program returns 0 as the content-length as opposed the total"
+               "bytes returned from the call to I/O socket read");
 
   CLI11_PARSE(app, argc, argv);
   dooked::run_program(cli_args);

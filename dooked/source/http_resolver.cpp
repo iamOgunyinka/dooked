@@ -10,8 +10,8 @@ http_resolver_t::http_resolver_t(net::io_context &ioc, ssl::context *sslc,
 
 void http_resolver_t::send_next_request() {
   try {
-    http_retries_count_ = http_retries_count_ = 0;
-    if (!(bool)is_default_tls_) {
+    http_retries_count_ = http_redirects_count_ = 0;
+    if (!is_default_tls_) {
       default_tls_context_ = tls13_holder_->original_ssl_context_;
     }
     name_ = names_.next_item();
@@ -69,8 +69,9 @@ void http_resolver_t::tcp_request_result(response_type_e const rt,
     result_map_.insert(name_, content_length, 403);
     return send_next_request();
   }
-  case response_type_e::cannot_resolve_name:
+  case response_type_e::cannot_resolve_name: {
     return on_resolve_error();
+  }
   case response_type_e::cannot_connect:
   case response_type_e::cannot_send: {
     result_map_.insert(name_, 0, static_cast<int>(rt));
@@ -142,12 +143,7 @@ void http_resolver_t::switch_ssl_method(std::string const &name) {
     }
     default_tls_context_ = &(tls13_holder_->tls_v13_context_);
     is_default_tls_ = 0;
-    auto &req =
-        http_request_handler_->request_.emplace<https_request_handler_t>(
-            io_context_, *default_tls_context_, name);
-    return req.start([this](auto const rt, auto const len, auto const &rstr) {
-      tcp_request_result(rt, len, rstr);
-    });
+    return send_https_request(name);
   } else {
     // switch back to tls v 1.2
     default_tls_context_ = tls13_holder_->original_ssl_context_;

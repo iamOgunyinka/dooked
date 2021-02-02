@@ -1,7 +1,7 @@
 #pragma once
 
 #include "dns.hpp"
-#include "requests.hpp"
+#include "http_requests_handler.hpp"
 #include "utils.hpp"
 
 namespace dooked {
@@ -16,6 +16,7 @@ class http_resolver_t {
   std::string name_{};
   int http_redirects_count_ = 0;
   int http_retries_count_ = 0;
+  // this should have been a boolean but it's an int to keep the alignment
   int is_default_tls_ = 1;
 
 private:
@@ -23,11 +24,9 @@ private:
   void switch_ssl_method(std::string const &);
   void send_next_request();
   void tcp_request_result(response_type_e, int, std::string const &);
-
-private:
-    void send_http_request(std::string const& address);
-    void send_https_request(std::string const& address);
-    void on_resolve_error();
+  void send_http_request(std::string const &address);
+  void send_https_request(std::string const &address);
+  void on_resolve_error();
 
 public:
   http_resolver_t(net::io_context &, ssl::context *, domain_list_t &,

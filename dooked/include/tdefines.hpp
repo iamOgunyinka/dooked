@@ -85,6 +85,7 @@ enum class dns_record_type_e : std::uint16_t {
 };
 
 // http://www.tcpipguide.com/free/t_DNSMessageHeaderandQuestionSectionFormat.htm
+
 enum class dns_rcode_e {
   DNS_RCODE_NO_ERROR = 0,
   DNS_RCODE_FORMAT_ERR = 1,

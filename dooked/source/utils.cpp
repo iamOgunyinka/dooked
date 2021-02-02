@@ -51,7 +51,8 @@ std::string trim_copy(std::string s) {
   trim(s);
   return s;
 }
-//===============================================================
+//=============copied code ends here=======================
+
 void split_string(std::string const &str, std::vector<std::string> &cont,
                   char const delim) {
   std::stringstream ss{str};

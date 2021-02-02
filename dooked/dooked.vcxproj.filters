@@ -21,30 +21,27 @@
     <ClCompile Include="source\utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\resolver.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="source\ucstring.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\dns.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="source\preprocessor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="source\requests.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="source\http_resolver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\dns_resolver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\cli_preprocessor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\http_requests_handler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\utils.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\resolver.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\ucstring.hpp">
@@ -56,13 +53,16 @@
     <ClInclude Include="include\tdefines.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\preprocessor.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\requests.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\http_resolver.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dns_resolver.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\cli_preprocessor.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\http_requests_handler.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "resolver.hpp"
+#include "dns_resolver.hpp"
 
 // maximum sockets to open regardless of the number of threads
 // supported by the hardware
@@ -15,7 +15,6 @@ struct json_data_t {
   int ttl{};
   int http_code{};
   int content_length{};
-
   dns_record_type_e type;
 
   static json_data_t serialize(std::string const &d, int const len,

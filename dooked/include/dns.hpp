@@ -32,10 +32,10 @@ struct dns_head_t {
 
 struct dns_alternate_record_t {
   static_string_t name{};
-  dns_record_type_e type; // RR TYPE (2 octets)
-  uint16_t dns_class_{};  // RR CLASS codes(2 octets)
-  uint16_t rd_length{};   // length in octets of the RDATA field.
-  uint32_t ttl{};         // time to live(4 octets)
+  dns_record_type_e type;     // RR TYPE (2 octets)
+  std::uint16_t dns_class_{}; // RR CLASS codes(2 octets)
+  std::uint16_t rd_length{};  // length in octets of the RDATA field.
+  std::uint32_t ttl{};        // time to live(4 octets)
   union rd_data_u {
     std::uint8_t *raw;
     static_string_t name;
@@ -73,10 +73,10 @@ bool dns_parse_record(std::uint8_t *begin, std::uint8_t *buf,
                       dns_alternate_record_t &record);
 bool dns_print_readable(char **buf, size_t buflen, unsigned char const *source,
                         size_t len);
-bool case_insensitive_compare(std::string const& a, std::string const& b);
+bool case_insensitive_compare(std::string const &a, std::string const &b);
 std::string dns_raw_record_data2str(dns_alternate_record_t &record,
                                     std::uint8_t *begin, std::uint8_t *end);
 void dns_extract_query_result(int, dns_packet_t &packet, std::uint8_t *begin,
                               std::size_t len, std::uint8_t *next);
-bool operator==(dns_record_t const&, dns_record_t const&);
+bool operator==(dns_record_t const &, dns_record_t const &);
 } // namespace dooked

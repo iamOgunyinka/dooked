@@ -1,9 +1,11 @@
-#include "requests.hpp"
+#include "http_requests_handler.hpp"
 #include "utils.hpp"
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/http/write.hpp>
-
 #include <random>
+
+// defined in dooked.cpp
+extern bool no_bytes_count;
 
 namespace dooked {
 bool starts_with(std::string const &str, std::string const &prefix) {
@@ -194,7 +196,8 @@ void http_request_handler_t::on_data_received(
   } else {
     response_int = response_type_e::unknown_response;
   }
-  int content_length = bytes_received;
+
+  int content_length{};
   if (response_->has_content_length()) {
     try {
       auto const cl_str = (*response_)[http::field::content_length].to_string();
@@ -205,6 +208,8 @@ void http_request_handler_t::on_data_received(
     if (auto const body_size = response_->payload_size();
         body_size.has_value()) {
       content_length = (int)(*body_size);
+    } else if (!no_bytes_count) {
+      content_length = bytes_received;
     }
   }
   if (callback_) {
@@ -411,7 +416,7 @@ void https_request_handler_t::on_data_received(
     response_int = response_type_e::unknown_response;
   }
 
-  int content_length = bytes_received;
+  int content_length = 0;
   if (response_->has_content_length()) {
     try {
       auto const cl_str = (*response_)[http::field::content_length].to_string();
@@ -422,6 +427,8 @@ void https_request_handler_t::on_data_received(
     if (auto const body_size = response_->payload_size();
         body_size.has_value()) {
       content_length = (int)(*body_size);
+    } else if (!no_bytes_count) {
+      content_length = bytes_received;
     }
   }
   if (callback_) {
