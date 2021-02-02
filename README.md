@@ -1,16 +1,23 @@
 # dooked
-
+A reconnaissance tool ... 
 ## Installation
-The program is self-sufficient and do not need external libraries.
+- Download Boost Library from the [official website](https://www.boost.org/users/download/)
+- Extract the library into any directory
+- Set the environment variable BOOST_ROOT to the location of Boost
+- `cd` into the directory containing `dooked` and run `cmake .` to generate the `Makefile`
+- Run `make` on the `Makefile` and that is all.
 
-Requirements: cmake, make, a C++ compiler (supporting C++17), or MSVC(Windows).
-
-```
-> cmake .
-> make
-```
+## Requirements
+- Boost C++ library
+- cmake
+- any C++ compiler (supporting C++17) or MSVC(for Windows).
 
 ## Usage
+
+For comprehensive help:
+
+```> dooked --help```
+
 ```
 > cat names.txt
 web.facebook.com
@@ -31,10 +38,10 @@ google.com
 // use the resolvers in resolvers.txt
 > ./dooked -i names.txt -r resolvers.txt
 
-// -t(file type) defaults 0(text file), -t is 1, it changes the expected file
-// type to JSON, -t 2 means unknown(dooked will try to figure it out)
+// -f(file type) defaults 0(text file), -f is 1, it changes the expected file
+// type to JSON, -f 2 means unknown(dooked will try to figure it out)
 
-> ./dooked -i names.json -t 1 -o new_names.json
+> ./dooked -i names.json -f 1 -o new_names.json
 
 > cat names.json | ./dooked -t 1 -o new_names.json
 ```

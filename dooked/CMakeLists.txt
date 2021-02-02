@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.0 FATAL_ERROR)
 
 # Project
-get_filename_component(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dooked" ABSOLUTE)
+get_filename_component(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
 #### find: Boost Lib
 set(Boost_USE_STATIC_LIBS OFF) 
@@ -61,9 +61,9 @@ message("${PROJECT_NAME}: CURR BIN DIR: ${CMAKE_CURRENT_BINARY_DIR}")
 # Source Files
 set(SRC_FILES
     ./source/dns.cpp
-    ./source/preprocessor.cpp
-    ./source/resolver.cpp
-    ./source/requests.cpp
+    ./source/cli_preprocessor.cpp
+    ./source/dns_resolver.cpp
+    ./source/http_requests_handler.cpp
     ./source/ucstring.cpp
     ./source/utils.cpp
     ./source/http_resolver.cpp
@@ -75,9 +75,9 @@ source_group("Sources" FILES ${SRC_FILES})
 # Header Files
 set(HEADERS_FILES
     ./include/dns.hpp
-    ./include/preprocessor.hpp
-    ./include/resolver.hpp
-    ./include/requests.hpp
+    ./include/cli_preprocessor.hpp
+    ./include/dns_resolver.hpp
+    ./include/http_requests_handler.hpp
     ./include/tdefines.hpp
     ./include/ucstring.hpp
     ./include/http_resolver.hpp
