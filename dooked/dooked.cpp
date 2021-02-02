@@ -27,9 +27,11 @@ int main(int argc, char **argv) {
   app.add_option("-l,--resolver-list", cli_args.resolver_filename,
                  "a filename consisting of IP addresses to resolve names");
   app.add_option("-r,--resolver", cli_args.resolver,
-                 "a (possible) list of resolvers separated by comma. If -rl "
+                 "a (possible) list of resolvers separated by comma. If -l "
                  "and -r isn't specified, -r is defaulted to 8.8.8.8");
-  app.add_option("-t,--threads", cli_args.thread_count, "total threads to use");
+  app.add_option("-t,--threads", cli_args.thread_count,
+                 "total threads to use(default: " +
+                     std::to_string(DOOKED_SUPPORTED_THREADS) + ")");
   app.add_option(
       "-c,--content-length", cli_args.content_length,
       "show content lengths that changed more than --content-length");

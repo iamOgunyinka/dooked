@@ -22,7 +22,7 @@ char get_random_char() {
 std::string get_random_string(std::uint16_t const length) {
   std::string result{};
   result.reserve(length);
-  for (std::size_t i = 0; i != length; ++i) {
+  for (std::uint16_t i = 0; i != length; ++i) {
     result.push_back(get_random_char());
   }
   return result;
@@ -42,19 +42,28 @@ bool case_insensitive_compare(std::string const &a, std::string const &b) {
                     });
 }
 
-void compare_http_result(int const content_length) {}
+void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
+                         http_response_t const &current_result) {
+  auto const current_req_cl = current_result.content_length_;
+  auto const current_req_http_code = current_result.http_status_;
+  auto const previous_req_cl = prev_http_result.content_length;
+  auto const previous_req_http_code = prev_http_result.http_code;
+
+  // to-do
+}
 
 [[nodiscard]] std::vector<json_data_t>::const_iterator
 compare_dns_result(std::vector<json_data_t>::const_iterator iter,
                    std::vector<json_data_t>::const_iterator end_iter,
-                   std::vector<dns_record_t> const &current_domain_info_list,
-                   int const content_length,
+                   http_dns_response_t<dns_record_t> const &current_domain_info,
+                   int const base_content_length,
                    jd_domain_comparator_t const &domain_comparator) {
 
   auto const last_elem_iter =
       std::upper_bound(iter, end_iter, *iter, domain_comparator);
   auto const previous_total_elem =
       (std::size_t)std::distance(iter, last_elem_iter);
+  auto const &current_domain_info_list = current_domain_info.dns_result_list_;
   auto const current_total_elem = current_domain_info_list.size();
 
   // something is missing
@@ -122,7 +131,8 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
       }
     }
   }
-  compare_http_result(content_length);
+  compare_http_result(base_content_length, *iter,
+                      current_domain_info.http_result_);
   return last_elem_iter;
 }
 
@@ -152,11 +162,9 @@ void compare_results(std::vector<json_data_t> const &previous_result,
       iter = std::upper_bound(iter, end_iter, *iter, domain_comparator);
       continue;
     }
-    auto const &current_domain_info_list =
-        current_find_iter->second.dns_result_list_;
-    auto next_iter =
-        compare_dns_result(iter, end_iter, current_domain_info_list,
-                           content_length, domain_comparator);
+    auto const &current_domain_info = current_find_iter->second;
+    auto next_iter = compare_dns_result(iter, end_iter, current_domain_info,
+                                        content_length, domain_comparator);
     iter = next_iter;
   }
 }
@@ -203,11 +211,11 @@ void write_json_result(map_container_t<dns_record_t> const &result_map,
   json::array_t list;
   for (auto const &result_pair : result_map.cresult()) {
     json::object_t internal_object;
+    auto &http_result = result_pair.second.http_result_;
     internal_object["dns_probe"] = result_pair.second.dns_result_list_;
-    internal_object["content_length"] = result_pair.second.content_length_;
-    internal_object["http_code"] = result_pair.second.http_status_;
-    internal_object["code_string"] =
-        code_string(result_pair.second.http_status_);
+    internal_object["content_length"] = http_result.content_length_;
+    internal_object["http_code"] = http_result.http_status_;
+    internal_object["code_string"] = code_string(http_result.http_status_);
 
     json::object_t object;
     object[result_pair.first] = internal_object;
@@ -342,7 +350,7 @@ bool read_input_file(cli_args_t const &cli_args, runtime_args_t &rt_args) {
 void start_name_checking(runtime_args_t &&rt_args) {
   std::size_t const user_specified_thread =
       (rt_args.thread_count > 0) ? (std::size_t)rt_args.thread_count
-                                 : DOOKER_SUPPORTED_THREADS;
+                                 : DOOKED_SUPPORTED_THREADS;
   auto const thread_count =
       (std::min)(rt_args.names->size(), user_specified_thread);
 

@@ -4,8 +4,8 @@
 
 // maximum sockets to open regardless of the number of threads
 // supported by the hardware
-#define DOOKER_SUPPORTED_THREADS (std::thread::hardware_concurrency())
-#define DOOKER_MAX_OPEN_SOCKET ((std::size_t)(DOOKER_SUPPORTED_THREADS * 2))
+#define DOOKED_SUPPORTED_THREADS (std::thread::hardware_concurrency())
+#define DOOKER_MAX_OPEN_SOCKET ((std::size_t)(DOOKED_SUPPORTED_THREADS * 2))
 
 namespace dooked {
 

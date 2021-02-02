@@ -63,14 +63,19 @@ public:
   }
 };
 
+struct http_response_t {
+  int content_length_{};
+  int http_status_{};
+};
+
+template <typename ValueType> struct http_dns_response_t {
+  http_response_t http_result_;
+  std::vector<ValueType> dns_result_list_;
+};
+
 // contains result for all searches.
 template <typename ValueType> class map_container_t {
-  struct response_t {
-    int content_length_{};
-    int http_status_ = 0;
-    std::vector<ValueType> dns_result_list_;
-  };
-  std::map<std::string, response_t> map_;
+  std::map<std::string, http_dns_response_t<ValueType>> map_;
   std::optional<std::mutex> opt_mutex_;
 
   void append_impl(std::string const &key, ValueType const &value) {
@@ -81,7 +86,14 @@ template <typename ValueType> class map_container_t {
     }
   }
 
+  void insert_impl(std::string const &name, int const len,
+                   int const http_status) {
+    map_[name].http_result_.content_length_ = len;
+    map_[name].http_result_.http_status_ = http_status;
+  }
+
 public:
+  using response_t = http_dns_response_t<ValueType>;
   map_container_t(bool use_lock = false) : map_{}, opt_mutex_{} {
     if (use_lock) {
       opt_mutex_.emplace();
@@ -99,13 +111,10 @@ public:
 
   void insert(std::string const &name, int const len, int const http_status) {
     if (!opt_mutex_) {
-      map_[name].content_length_ = len;
-      map_[name].http_status_ = http_status;
-      return;
+      return insert_impl(name, len, http_status);
     }
     std::lock_guard<std::mutex> lock_g{*opt_mutex_};
-    map_[name].content_length_ = len;
-    map_[name].http_status_ = http_status;
+    insert_impl(name, len, http_status);
   }
   // only used by main thread, after all "computations" has been
   // done. There's no need for locks here.
