@@ -1,46 +1,18 @@
 #include "cli_preprocessor.hpp"
-#include "http_resolver.hpp"
+#include "dns/dns_resolver.hpp"
+#include "http/resolver.hpp"
+#include "utils/exceptions.hpp"
+#include "utils/random_utils.hpp"
+#include "utils/string_utils.hpp"
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/thread_pool.hpp>
-#include <random>
 #include <set>
-#include <thread>
+#include <spdlog/spdlog.h>
 
 namespace dooked {
 
 namespace net = boost::asio;
-
-char get_random_char() {
-  static std::random_device rd{};
-  static std::mt19937 gen{rd()};
-  static std::uniform_int_distribution<> uid(0, 52);
-  static char const *all_alphas =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
-  return all_alphas[uid(gen)];
-}
-
-std::string get_random_string(std::uint16_t const length) {
-  std::string result{};
-  result.reserve(length);
-  for (std::uint16_t i = 0; i != length; ++i) {
-    result.push_back(get_random_char());
-  }
-  return result;
-}
-
-void to_json(json &j, dns_record_t const &record) {
-  j = json{{"ttl", record.ttl},
-           {"type", dns_record_type2str(record.type)},
-           {"info", record.rdata}};
-}
-
-bool case_insensitive_compare(std::string const &a, std::string const &b) {
-  return (a.size() == b.size()) &&
-         std::equal(a.cbegin(), a.cend(), b.cbegin(),
-                    [](char const a, char const b) {
-                      return (std::toupper(a) == std::toupper(b));
-                    });
-}
+using namespace fmt::v7::literals;
 
 void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
                          http_response_t const &current_result) {
@@ -52,12 +24,12 @@ void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
   // to-do
 }
 
-[[nodiscard]] std::vector<json_data_t>::const_iterator
-compare_dns_result(std::vector<json_data_t>::const_iterator iter,
-                   std::vector<json_data_t>::const_iterator end_iter,
-                   http_dns_response_t<dns_record_t> const &current_domain_info,
-                   int const base_content_length,
-                   jd_domain_comparator_t const &domain_comparator) {
+[[nodiscard]] std::vector<json_data_t>::const_iterator compare_dns_result(
+    std::vector<json_data_t>::const_iterator iter,
+    std::vector<json_data_t>::const_iterator end_iter,
+    http_dns_response_t<probe_result_t> const &current_domain_info,
+    int const base_content_length,
+    jd_domain_comparator_t const &domain_comparator) {
 
   auto const last_elem_iter =
       std::upper_bound(iter, end_iter, *iter, domain_comparator);
@@ -77,7 +49,8 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
           });
       if (!found) {
         spdlog::error("[MISSING][{}][{}] `{}`", iter->domain_name,
-                      dns_record_type2str(start_iter->type), start_iter->rdata);
+                      dns_record_type_to_str(start_iter->type),
+                      start_iter->rdata);
       }
     }
     // information may have been changed
@@ -89,18 +62,18 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
           [](auto const &a, auto const &b) { return a.type < b.type; });
       auto const find_iter = std::find_if(
           eq_range.first, eq_range.second,
-          [&val = *start_iter](dns_record_t const &record) {
+          [&val = *start_iter](auto const &record) {
             return case_insensitive_compare(val.rdata, record.rdata);
           });
       // one of the previous record wasn't found
       if (find_iter == eq_range.second) {
         if (std::distance(eq_range.first, eq_range.second) == 1) {
           spdlog::info("[CHANGED][{}][{}] from `{}` to `{}`", iter->domain_name,
-                       dns_record_type2str(start_iter->type), start_iter->rdata,
-                       eq_range.first->rdata);
+                       dns_record_type_to_str(start_iter->type),
+                       start_iter->rdata, eq_range.first->rdata);
         } else {
           spdlog::error("[REMOVED][{}][{}] `{}`", iter->domain_name,
-                        dns_record_type2str(start_iter->type),
+                        dns_record_type_to_str(start_iter->type),
                         start_iter->rdata);
         }
       }
@@ -113,7 +86,7 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
           });
       if (find_iter == last_elem_iter) {
         spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
-                     dns_record_type2str(new_item.type), new_item.rdata);
+                     dns_record_type_to_str(new_item.type), new_item.rdata);
       }
     }
   } else {
@@ -126,7 +99,7 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
           });
       if (!found) {
         spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
-                     dns_record_type2str(current_elem.type),
+                     dns_record_type_to_str(current_elem.type),
                      current_elem.rdata);
       }
     }
@@ -137,7 +110,7 @@ compare_dns_result(std::vector<json_data_t>::const_iterator iter,
 }
 
 void compare_results(std::vector<json_data_t> const &previous_result,
-                     map_container_t<dns_record_t> const &current_result,
+                     map_container_t<probe_result_t> const &current_result,
                      int const content_length) {
 #ifdef _DEBUG
   spdlog::info("Trying to compare old with new result");
@@ -169,69 +142,9 @@ void compare_results(std::vector<json_data_t> const &previous_result,
   }
 }
 
-std::string code_string(int const http_status_code) {
-  if (http_status_code == (int)response_type_e::cannot_connect) {
-    return "could not connect";
-  } else if (http_status_code == 200) {
-    return "200 - OK";
-  } else if (http_status_code == (int)response_type_e::cannot_resolve_name) {
-    return "could not resolve name";
-  } else if (http_status_code == (int)response_type_e::cannot_send) {
-    return "unable to send GET request to domain name";
-  } else if (http_status_code == 309) {
-    return "too many redirection(>10)";
-  } else if (http_status_code == (int)response_type_e::not_found ||
-             http_status_code == 404) {
-    return "404 - Not found";
-  } else if (http_status_code == (int)response_type_e::bad_request) {
-    return "400 - Bad request";
-  } else if (http_status_code == (int)response_type_e::forbidden ||
-             http_status_code == 403) {
-    return "403 - Forbidden";
-  } else if (http_status_code == 503) {
-    return "50(0-3) - Server error";
-  } else if (http_status_code == (int)response_type_e::recv_timed_out) {
-    return "Recv timed out";
-  }
-
-  return "unknown error occurred";
-}
-
-void write_json_result(map_container_t<dns_record_t> const &result_map,
-                       runtime_args_t const &rt_args) {
-  if (result_map.empty()) {
-    std::error_code ec{};
-    if (std::filesystem::exists(rt_args.output_filename) &&
-        !std::filesystem::remove(rt_args.output_filename, ec)) {
-      spdlog::error("unable to remove {}", rt_args.output_filename);
-    }
-    return;
-  }
-
-  json::array_t list;
-  for (auto const &result_pair : result_map.cresult()) {
-    json::object_t internal_object;
-    auto &http_result = result_pair.second.http_result_;
-    internal_object["dns_probe"] = result_pair.second.dns_result_list_;
-    internal_object["content_length"] = http_result.content_length_;
-    internal_object["http_code"] = http_result.http_status_;
-    internal_object["code_string"] = code_string(http_result.http_status_);
-
-    json::object_t object;
-    object[result_pair.first] = internal_object;
-    list.push_back(std::move(object));
-  }
-  json::object_t res_object;
-
-  res_object["program"] = "dooked";
-  res_object["result"] = std::move(list);
-  (*rt_args.output_file) << json(res_object).dump(2) << "\n";
-  rt_args.output_file->close();
-}
-
 void dns_functor(net::io_context &io_context, net::ssl::context *ssl_context,
                  runtime_args_t &rt_args,
-                 map_container_t<dns_record_t> &result_map,
+                 map_container_t<probe_result_t> &result_map,
                  std::size_t const socket_count, bool const deferring) {
   std::vector<std::unique_ptr<custom_resolver_socket_t>> sockets{};
   sockets.resize(socket_count);
@@ -247,7 +160,7 @@ void dns_functor(net::io_context &io_context, net::ssl::context *ssl_context,
 
 void http_functor(net::io_context &io_context, net::ssl::context *ssl_context,
                   runtime_args_t &rt_args,
-                  map_container_t<dns_record_t> &result_map,
+                  map_container_t<probe_result_t> &result_map,
                   std::size_t const socket_count) {
   std::vector<std::unique_ptr<http_resolver_t>> sockets{};
   sockets.resize(socket_count);
@@ -355,7 +268,7 @@ void start_name_checking(runtime_args_t &&rt_args) {
       (std::min)(rt_args.names->size(), user_specified_thread);
 
   auto const max_open_sockets =
-      (std::min)(rt_args.names->size(), DOOKER_MAX_OPEN_SOCKET);
+      (std::min)(rt_args.names->size(), DOOKED_MAX_OPEN_SOCKET);
   // minimum of 1 socket per thread
   auto const sockets_per_thread =
       (std::max)(1, (int)(max_open_sockets / thread_count));
@@ -367,7 +280,7 @@ void start_name_checking(runtime_args_t &&rt_args) {
 #endif // _DEBUG
 
   bool const using_lock = (thread_count > 1);
-  map_container_t<dns_record_t> result_map(using_lock);
+  map_container_t<probe_result_t> result_map(using_lock);
   bool const deferring = rt_args.http_request_time_ == http_process_e::deferred;
 
   // by default, we use tls v1.2, and only switch to 1.3 if 1.2 fails
@@ -427,7 +340,7 @@ void start_name_checking(runtime_args_t &&rt_args) {
     for (auto &res : result) {
       std::sort(res.second.dns_result_list_.begin(),
                 res.second.dns_result_list_.end(),
-                [](dns_record_t const &a, dns_record_t const &b) {
+                [](auto const &a, auto const &b) {
                   return std::tie(a.type, a.rdata) < std::tie(b.type, b.rdata);
                 });
     }

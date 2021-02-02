@@ -117,7 +117,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\vcpkg\installed\x64-windows\include;D:\boost_1_75\include;D:\Visual Studio Projects\dooked\dooked\include;D:\Visual Studio Projects\dooked\dooked\third-party\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Visual Studio Projects\dooked\dooked\json\single_include;D:\vcpkg\installed\x64-windows\include;D:\boost_1_75\include;D:\Visual Studio Projects\dooked\dooked\include;D:\Visual Studio Projects\dooked\dooked\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/bigobj
  %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -145,24 +145,32 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dooked.cpp" />
-    <ClCompile Include="source\dns.cpp" />
-    <ClCompile Include="source\http_resolver.cpp" />
     <ClCompile Include="source\cli_preprocessor.cpp" />
-    <ClCompile Include="source\http_requests_handler.cpp" />
-    <ClCompile Include="source\dns_resolver.cpp" />
-    <ClCompile Include="source\ucstring.cpp" />
-    <ClCompile Include="source\utils.cpp" />
+    <ClCompile Include="source\dns\dns.cpp" />
+    <ClCompile Include="source\dns\dns_resolver.cpp" />
+    <ClCompile Include="source\dooked.cpp" />
+    <ClCompile Include="source\http\requests_handler.cpp" />
+    <ClCompile Include="source\http\resolver.cpp" />
+    <ClCompile Include="source\utils\constants.cpp" />
+    <ClCompile Include="source\utils\io_utils.cpp" />
+    <ClCompile Include="source\utils\random_utils.cpp" />
+    <ClCompile Include="source\utils\string_utils.cpp" />
+    <ClCompile Include="source\utils\ucstring.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\dns.hpp" />
-    <ClInclude Include="include\http_resolver.hpp" />
     <ClInclude Include="include\cli_preprocessor.hpp" />
-    <ClInclude Include="include\http_requests_handler.hpp" />
-    <ClInclude Include="include\dns_resolver.hpp" />
-    <ClInclude Include="include\tdefines.hpp" />
-    <ClInclude Include="include\ucstring.hpp" />
-    <ClInclude Include="include\utils.hpp" />
+    <ClInclude Include="include\dns\dns.hpp" />
+    <ClInclude Include="include\dns\dns_resolver.hpp" />
+    <ClInclude Include="include\http\requests_handler.hpp" />
+    <ClInclude Include="include\http\resolver.hpp" />
+    <ClInclude Include="include\utils\constants.hpp" />
+    <ClInclude Include="include\utils\containers.hpp" />
+    <ClInclude Include="include\utils\dns_utils.hpp" />
+    <ClInclude Include="include\utils\exceptions.hpp" />
+    <ClInclude Include="include\utils\io_utils.hpp" />
+    <ClInclude Include="include\utils\probe_result.hpp" />
+    <ClInclude Include="include\utils\random_utils.hpp" />
+    <ClInclude Include="include\utils\string_utils.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
