@@ -34,4 +34,8 @@
 x64/
 .vs/
 Debug/
+tests/
 
+*.vcxproj
+*.vcxproj.*
+*.sln
