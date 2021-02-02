@@ -121,7 +121,7 @@ void http_request_handler_t::on_data_received(
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
 #ifdef _DEBUG
-    printf("HTTP error: %s", ec.message().c_str());
+    printf("HTTP error: %s\n", ec.message().c_str());
 #endif // _DEBUG
 
     if (callback_) {
@@ -199,7 +199,6 @@ void https_request_handler_t::perform_ssl_ritual() {
                                 domain_name_.c_str())) {
     beast::error_code ec{static_cast<int>(::ERR_get_error()),
                          net::error::get_ssl_category()};
-    // spdlog::error("Unable to set TLS because: {}", ec.message());
   }
 }
 
@@ -218,7 +217,7 @@ void https_request_handler_t::on_ssl_handshake(
     bool const ssl_error = ec.category() == net::error::get_ssl_category();
 #ifdef _DEBUG
     auto const err_message = ec.message();
-    printf("SSL handshake(%d)(%s): %s", ec.value(),
+    printf("SSL handshake(%d)(%s): %s\n", ec.value(),
            (ssl_error ? "true" : "false"), err_message.c_str());
 #endif // _DEBUG
     if (ssl_error && ERR_PACK(ERR_LIB_SSL, 0, SSL_R_WRONG_VERSION_NUMBER)) {
@@ -303,7 +302,7 @@ void https_request_handler_t::reconnect() {
 void https_request_handler_t::on_connect(beast::error_code const ec) {
   if (ec) {
 #ifdef _DEBUG
-    puts("Could not connect. Will reconnect now...");
+    puts("Could not connect. Will reconnect now...\n");
 #endif
     return reconnect();
   }

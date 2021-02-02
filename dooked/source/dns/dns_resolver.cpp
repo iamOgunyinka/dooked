@@ -137,7 +137,7 @@ void custom_resolver_socket_t::dns_send_next_request() {
     dns_send_network_request();
   } catch (empty_container_exception_t const &) {
   } catch (bad_name_exception_t const &except) {
-    puts(except.what());
+    printf("%s\n", except.what());
   }
 }
 
@@ -206,7 +206,7 @@ void custom_resolver_socket_t::dns_on_data_received(
     parse_dns_response(packet, recv_buffer_);
     dns_serialize_packet(packet);
   } catch (std::exception const &e) {
-    puts(e.what());
+    printf("%s\n", e.what());
   }
   dns_send_next_request();
 }
@@ -415,7 +415,7 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
   if (rcode != dns_rcode_e::DNS_RCODE_NO_ERROR) {
 #ifdef _DEBUG
     auto const err_string = rcode_to_string(rcode);
-    printf("Response code: %s", err_string.c_str());
+    printf("Response code: %s\n", err_string.c_str());
 #endif // _DEBUG
     return;
   }
@@ -429,7 +429,7 @@ void parse_dns_response(dns_packet_t &packet, ucstring_t &buff) {
     bool const successful = parse_name(data, rdata, data + buffer_len,
                                        name.name, &name.name_length, &new_end);
     if ((new_end + 2) > (data + buffer_len) || !successful) {
-      puts("There was an error parsing the question");
+      puts("There was an error parsing the question\n");
       return;
     }
     auto const type = static_cast<dns_record_type_e>(uint16_value(new_end));

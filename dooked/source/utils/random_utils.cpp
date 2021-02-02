@@ -1,5 +1,3 @@
-#pragma once
-
 #include "utils/random_utils.hpp"
 #include <random>
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils/exceptions.hpp"
+#include <algorithm>
 #include <deque>
 #include <map>
 #include <mutex>

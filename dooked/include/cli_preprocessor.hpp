@@ -2,6 +2,7 @@
 
 #include "dns/dns_resolver.hpp"
 #include "utils/io_utils.hpp"
+#include <thread>
 
 // maximum sockets to open regardless of the number of threads
 // supported by the hardware

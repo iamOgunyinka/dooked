@@ -17,7 +17,9 @@ endif()
 
 set(PROJECT_NAME dooked)
 include_directories(${PROJECT_DIR}/include)
-include_directories(${PROJECT_DIR}/third-party/include)
+include_directories(${PROJECT_DIR})
+include_directories(${PROJECT_DIR}/json/single_include)
+include_directories(${PROJECT_DIR}/spdlog/include)
 
 
 link_directories(/usr/lib)
@@ -60,28 +62,38 @@ message("${PROJECT_NAME}: CURR BIN DIR: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Source Files
 set(SRC_FILES
-    ./source/dns.cpp
+    ./source/dns/dns.cpp
+    ./source/dns/dns_resolver.cpp
+    ./source/http/resolver.cpp
+    ./source/http/requests_handler.cpp
+    ./source/utils/constants.cpp
+    ./source/utils/io_utils.cpp
+    ./source/utils/string_utils.cpp
+    ./source/utils/random_utils.cpp
+    ./source/utils/ucstring.cpp
     ./source/cli_preprocessor.cpp
-    ./source/dns_resolver.cpp
-    ./source/http_requests_handler.cpp
-    ./source/ucstring.cpp
-    ./source/utils.cpp
-    ./source/http_resolver.cpp
-    ./dooked.cpp
+    ./source/dooked
 )
 
 source_group("Sources" FILES ${SRC_FILES})
 
 # Header Files
 set(HEADERS_FILES
-    ./include/dns.hpp
+    ./include/dns/dns.hpp
+    ./include/dns/dns_resolver.hpp
+    ./include/http/resolver.hpp
+    ./include/http/requests_handler.hpp
+    ./include/utils/constants.hpp
+    ./include/utils/containers.hpp
+    ./include/utils/dns_utils.hpp
+    ./include/utils/exceptions.hpp
+    ./include/utils/io_utils.hpp
+    ./include/utils/probe_result.hpp
+    ./include/utils/random_utils.hpp
+    ./include/utils/string_utils.hpp
+    ./include/utils/ucstring.hpp
     ./include/cli_preprocessor.hpp
-    ./include/dns_resolver.hpp
-    ./include/http_requests_handler.hpp
-    ./include/tdefines.hpp
-    ./include/ucstring.hpp
-    ./include/http_resolver.hpp
-    ./include/utils.hpp
+    ./include/CLI11.hpp
 )
 
 source_group("Headers" FILES ${HEADERS_FILES})
