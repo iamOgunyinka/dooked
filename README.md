@@ -8,9 +8,9 @@ A reconnaissance tool ...
 ```
 git clone "https://github.com/iamOgunyinka/dooked.git"
 cd dooked
-git submodule init
-git submodule update
-cd dooked
+git submodule update --init
+cd dooked/CLI11 && git checkout tags/v1.9.1
+cd ../
 cmake .
 make
 ```

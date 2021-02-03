@@ -16,8 +16,9 @@ endif()
 ###########################
 
 set(PROJECT_NAME dooked)
+set(CMAKE_BUILD_TYPE Release)
 include_directories(${PROJECT_DIR}/include)
-include_directories(${PROJECT_DIR})
+include_directories(${PROJECT_DIR}/CLI11/include)
 include_directories(${PROJECT_DIR}/json/single_include)
 include_directories(${PROJECT_DIR}/spdlog/include)
 
@@ -117,7 +118,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
    -D_CONSOLE 
     )
     if(MSVC)
-        target_compile_options(${PROJECT_NAME} PRIVATE  /W3 /MD /Od /Zi /EHsc)
+        target_compile_options(${PROJECT_NAME} PRIVATE  /W3 /MD /Od /Zi /EHsc /std:c++17)
     endif()
 endif()
 
@@ -127,6 +128,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
    -D_CONSOLE 
     )
     if(MSVC)
-        target_compile_options(${PROJECT_NAME} PRIVATE  /W3 /GL /Oi /Gy /Zi /EHsc)
+        target_compile_options(${PROJECT_NAME} PRIVATE  /W3 /GL /Oi /Gy /Zi /EHsc /std:c++17)
     endif()
 endif()

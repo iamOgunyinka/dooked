@@ -8,7 +8,8 @@
 #include <optional>
 
 // max dns wait time in seconds
-#define DOOKED_MAX_DNS_WAIT_TIME 5
+#define DOOKED_MAX_DNS_WAIT_TIME 10
+#define DOOKED_MAX_DNS_RETRIES 3
 
 namespace dooked {
 namespace net = boost::asio;
@@ -38,11 +39,12 @@ class custom_resolver_socket_t {
   std::optional<request_t> http_request_handler_{};
   std::optional<temporary_ssl_holder_t> tls_v13_holder_{};
   resolver_address_t current_resolver_{};
-  dns_record_type_e current_rec_type_{dns_record_type_e::DNS_REC_UNDEFINED};
   int last_processed_dns_index_{-1};
   int http_retries_count_{};
   int http_redirects_count_{};
+  int dns_retries_ = 0;
   int const supported_dns_record_size_;
+  dns_record_type_e current_rec_type_{};
   static constexpr std::size_t const sizeof_packet_header{12};
   ucstring_t send_buffer_{};
   ucstring_t recv_buffer_{};
@@ -69,6 +71,7 @@ private:
   void send_https_request(std::string const &address);
   void send_http_request(std::string const &address);
   void http_switch_tls_requested(std::string const &);
+  bool parse_dns_response(dns_packet_t &, ucstring_t &);
 
 public:
   custom_resolver_socket_t(net::io_context &, net::ssl::context *,
@@ -78,7 +81,6 @@ public:
   void start();
 };
 
-void parse_dns_response(dns_packet_t &, ucstring_t &);
 void dns_create_query(std::string const &name, std::uint16_t const type,
                       std::uint16_t const id, ucstring_t &bufp);
 std::string rcode_to_string(dns_rcode_e);

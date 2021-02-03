@@ -1,8 +1,5 @@
-// dooked.cpp : This file contains the 'main' function.
-// let's keep as simple a file as it can get
-
 #include "cli_preprocessor.hpp"
-#include "CLI11.hpp"
+#include <CLI/CLI.hpp>
 
 // we've tried as much as possible to stay away from global variables but
 // in this case, we need to pass this variable down a long long stack of
