@@ -9,7 +9,8 @@
 
 // max dns wait time in seconds
 #define DOOKED_MAX_DNS_WAIT_TIME 10
-#define DOOKED_MAX_DNS_RETRIES 3
+#define DOOKED_MAX_RETRIES 3
+#define DOOKED_MAX_REDIRECTS 5
 
 namespace dooked {
 namespace net = boost::asio;
@@ -18,7 +19,7 @@ struct resolver_address_t {
   net::ip::udp::endpoint ep{};
 };
 
-using dns_rec_list_t = std::array<dns_record_type_e, 8>;
+using dns_rec_list_t = std::array<dns_record_type_e, 7>;
 struct dns_supported_record_type_t {
   static dns_rec_list_t const supported_types;
 };

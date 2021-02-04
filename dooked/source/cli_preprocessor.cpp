@@ -9,6 +9,10 @@
 #include <set>
 #include <spdlog/spdlog.h>
 
+// defined (and assigned to) in main.cpp
+extern bool silent;
+extern bool compare_cl;
+
 namespace dooked {
 
 namespace net = boost::asio;
@@ -21,7 +25,29 @@ void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
   auto const previous_req_cl = prev_http_result.content_length;
   auto const previous_req_http_code = prev_http_result.http_code;
 
-  // to-do
+  if (compare_cl) {
+    // check if content-length's changed
+    bool const baseline_specified = base_cl != -1;
+    if ((baseline_specified && (current_req_cl > base_cl)) ||
+        ((!baseline_specified) && current_req_cl != previous_req_cl)) {
+      spdlog::info("[CHANGED][CONTENT-LENGTH][{}] from `{}` to `{}`",
+                   prev_http_result.domain_name, previous_req_cl,
+                   current_req_cl);
+    }
+  }
+  // the HTTP code has changed
+  if (previous_req_http_code == 200 && current_req_http_code != 200) {
+    if (current_req_http_code ==
+        (int)response_type_e::cannot_resolve_name) { // special case
+      spdlog::info("[CHANGED][HTTP CODE][{}] used to resolve but now doesn't",
+                   prev_http_result.domain_name);
+    } else {
+      spdlog::info("[CHANGED][HTTP CODE][{}] from `{}` to `{}`",
+                   prev_http_result.domain_name,
+                   code_string(previous_req_http_code),
+                   code_string(current_req_http_code));
+    }
+  }
 }
 
 [[nodiscard]] std::vector<json_data_t>::const_iterator compare_dns_result(
@@ -55,38 +81,41 @@ void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
     }
     // information may have been changed
   } else if (current_total_elem == previous_total_elem) {
+    auto record_type = dns_record_type_e::DNS_REC_UNDEFINED;
     for (auto start_iter = iter; start_iter != last_elem_iter; ++start_iter) {
+      // find records of the same type: A, AAAA, MX, NS...
       auto const eq_range = std::equal_range(
           current_domain_info_list.cbegin(), current_domain_info_list.cend(),
           *start_iter,
           [](auto const &a, auto const &b) { return a.type < b.type; });
+      // see if the data is the same.
       auto const find_iter = std::find_if(
           eq_range.first, eq_range.second,
           [&val = *start_iter](auto const &record) {
             return case_insensitive_compare(val.rdata, record.rdata);
           });
-      // one of the previous record wasn't found
+      // if we cannot find it
       if (find_iter == eq_range.second) {
-        if (std::distance(eq_range.first, eq_range.second) == 1) {
+        auto const distance = std::distance(eq_range.first, eq_range.second);
+        if (distance == 0) {
+          spdlog::error("[REMOVED][{}][{}] `{}`", iter->domain_name,
+                        dns_record_type_to_str(start_iter->type),
+                        start_iter->rdata);
+        } else if (distance == 1) {
           spdlog::info("[CHANGED][{}][{}] from `{}` to `{}`", iter->domain_name,
                        dns_record_type_to_str(start_iter->type),
                        start_iter->rdata, eq_range.first->rdata);
         } else {
-          spdlog::error("[REMOVED][{}][{}] `{}`", iter->domain_name,
-                        dns_record_type_to_str(start_iter->type),
-                        start_iter->rdata);
+          if (record_type != iter->type) {
+            record_type = iter->type;
+            for (auto current_range = eq_range.first;
+                 current_range != eq_range.second; ++current_range) {
+              spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
+                           dns_record_type_to_str(current_range->type),
+                           current_range->rdata);
+            }
+          }
         }
-      }
-    }
-    // look for information in this new result not present in old result
-    for (auto const &new_item : current_domain_info_list) {
-      auto find_iter =
-          std::find_if(iter, last_elem_iter, [&new_item](auto const &old_item) {
-            return case_insensitive_compare(old_item.rdata, new_item.rdata);
-          });
-      if (find_iter == last_elem_iter) {
-        spdlog::info("[NEW][{}][{}] `{}`", iter->domain_name,
-                     dns_record_type_to_str(new_item.type), new_item.rdata);
       }
     }
   } else {
@@ -112,10 +141,9 @@ void compare_http_result(int const base_cl, json_data_t const &prev_http_result,
 void compare_results(std::vector<json_data_t> const &previous_result,
                      map_container_t<probe_result_t> const &current_result,
                      int const content_length) {
-#ifdef _DEBUG
-  spdlog::info("Trying to compare old with new result");
-#endif // _DEBUG
-
+  if (!silent) {
+    spdlog::info("Trying to compare old with new result");
+  }
   // previous data is already sorted.
   // current data is a pre-sorted data.
   auto const &current_data_map = current_result.cresult();
@@ -268,16 +296,16 @@ void start_name_checking(runtime_args_t &&rt_args) {
       (std::min)(rt_args.names->size(), user_specified_thread);
 
   auto const max_open_sockets =
-      (std::min)(rt_args.names->size(), DOOKED_MAX_OPEN_SOCKET);
+      (std::min)(rt_args.names->size(), (thread_count * 2));
   // minimum of 1 socket per thread
   auto const sockets_per_thread =
       (std::max)(1, (int)(max_open_sockets / thread_count));
 
-#ifdef _DEBUG
-  spdlog::info("Native thread count: {}", thread_count);
-  spdlog::info("Sockets per thread: {}", sockets_per_thread);
-  spdlog::info("Total input: {}", rt_args.names->size());
-#endif // _DEBUG
+  if (!silent) {
+    spdlog::info("Native thread count: {}", thread_count);
+    spdlog::info("Sockets per thread: {}", sockets_per_thread);
+    spdlog::info("Total input: {}", rt_args.names->size());
+  }
 
   bool const using_lock = (thread_count > 1);
   map_container_t<probe_result_t> result_map(using_lock);
@@ -296,34 +324,35 @@ void start_name_checking(runtime_args_t &&rt_args) {
     deferred_names_.emplace(rt_args.names->clone());
   }
 
-  // we need to construct different I/O context for DNS and HTTP
-  // probing, so we introduce a scope.
+  net::io_context io_context((int)thread_count);
+  std::optional<net::thread_pool> thread_pool(std::in_place, thread_count);
+
   { // perform DNS record probing.
-    net::io_context io_context((int)thread_count);
-    net::thread_pool thread_pool(thread_count);
     for (std::size_t index = 0; index < thread_count; ++index) {
-      net::post(thread_pool, [&] {
+      net::post(*thread_pool, [&] {
         dns_functor(io_context, &ssl_context, rt_args, result_map,
                     sockets_per_thread, deferring);
       });
     }
-    thread_pool.join();
+    thread_pool->join();
   }
 
   // if we deferred HTTP/S "probe", now is the time to get to it
   if (deferring) {
+    io_context.reset();
+    thread_pool.emplace(thread_count);
     rt_args.names.emplace(std::move(*deferred_names_));
-    net::io_context io_context((int)thread_count);
-    net::thread_pool thread_pool(thread_count);
     for (std::size_t index = 0; index < thread_count; ++index) {
-      net::post(thread_pool, [&] {
+      net::post(*thread_pool, [&] {
         http_functor(io_context, &ssl_context, rt_args, result_map,
                      sockets_per_thread);
       });
     }
-    thread_pool.join();
+    thread_pool->join();
   }
-
+  if (!silent) {
+    spdlog::info("Writing JSON output");
+  }
   write_json_result(result_map, rt_args);
 
   // compare old with new result -- only if we had previous record
@@ -355,9 +384,9 @@ void run_program(cli_args_t const &cli_args) {
   std::vector<std::string> resolver_strings{};
   if (cli_args.resolver_filename.empty()) {
     if (cli_args.resolver.empty()) {
-#ifdef _DEBUG
-      spdlog::info("No resolver specified, using default");
-#endif // _DEBUG
+      if (!silent) {
+        spdlog::info("No resolver specified, using default");
+      }
       resolver_strings.push_back("8.8.8.8 53");
     } else {
       split_string(cli_args.resolver, resolver_strings, ',');
@@ -402,9 +431,9 @@ void run_program(cli_args_t const &cli_args) {
     if (!file) {
       return spdlog::error("unable to open `{}` for out", filename);
     }
-#ifdef _DEBUG
-    spdlog::info("Output filename: {}", filename);
-#endif // _DEBUG
+    if (!silent) {
+      spdlog::info("Output filename: {}", filename);
+    }
     rt_args.output_file = std::make_unique<std::ofstream>(std::move(file));
     rt_args.output_filename = std::move(filename);
   }
@@ -449,5 +478,29 @@ void run_program(cli_args_t const &cli_args) {
   rt_args.thread_count = cli_args.thread_count;
   rt_args.content_length = cli_args.content_length;
   return start_name_checking(std::move(rt_args));
+}
+
+void report_error(std::string const &message) { spdlog::error(message); }
+void report_error(char const *format, std::string const &message) {
+  spdlog::error(format, message);
+}
+
+void report_error(char const *format, int const value, bool const boolean_value,
+                  std::string const &str) {
+  spdlog::error(format, value, boolean_value, str);
+}
+
+void print_banner() {
+  auto const header = R"sep("
+
+      _             _            _ 
+     | |           | |          | |
+   __| | ___   ___ | | _____  __| |
+  / _` |/ _ \ / _ \| |/ / _ \/ _` |
+ | (_| | (_) | (_) |   <  __/ (_| |
+  \__,_|\___/ \___/|_|\_\___|\__,_|
+
+)sep";
+  fprintf(stdout, "%s", header);
 }
 } // namespace dooked

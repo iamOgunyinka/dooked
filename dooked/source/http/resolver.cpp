@@ -104,8 +104,8 @@ void http_resolver_t::tcp_request_result(response_type_e const rt,
     return send_next_request();
   }
   case response_type_e::recv_timed_out: { // retry, wait timeout
-    ++http_retries_count_;
-    if (http_retries_count_ > 5) {
+    ;
+    if (++http_retries_count_ > 3) {
       result_map_.insert(name_, 0, static_cast<int>(rt));
       return send_next_request();
     }

@@ -2,11 +2,13 @@
 #include <CLI/CLI.hpp>
 
 // we've tried as much as possible to stay away from global variables but
-// in this case, we need to pass this variable down a long long stack of
-// calls and parameterizing a simple bool just isn't worth it and since
-// it is always set and never changes, guess we can swing this.
+// in this case, we need to pass these variables down a long long stack of
+// calls and parameterizing simple bools just isn't worth it and since they
+// are only set here and the values never change, guess we can swing this.
 
 bool no_bytes_count = false;
+bool silent = false;
+bool compare_cl = false;
 
 int main(int argc, char **argv) {
   CLI::App app{"dooked -- a CLI tool to enumerate DNS info"};
@@ -37,12 +39,21 @@ int main(int argc, char **argv) {
   app.add_flag(
       "--defer", cli_args.post_http_request,
       "defers http request until after all DNS requests have been completed");
+  app.add_flag("--compare-cl", compare_cl,
+               "compare content-length of HTTP requests");
+
   app.add_flag("--nbc", no_bytes_count,
                "in case `content-length` is missing in an HTTP header field,"
                "program returns 0 as the content-length as opposed the total"
                "bytes returned from the call to I/O socket read");
+  app.add_flag("--silent", silent, "do not show any DNS or HTTP info");
 
   CLI11_PARSE(app, argc, argv);
+
+  if (!silent) {
+    dooked::print_banner();
+    fflush(stdout);
+  }
   dooked::run_program(cli_args);
   return 0;
 }

@@ -73,7 +73,7 @@ set(SRC_FILES
     ./source/utils/random_utils.cpp
     ./source/utils/ucstring.cpp
     ./source/cli_preprocessor.cpp
-    ./source/dooked
+    ./source/main.cpp
 )
 
 source_group("Sources" FILES ${SRC_FILES})
@@ -94,7 +94,6 @@ set(HEADERS_FILES
     ./include/utils/string_utils.hpp
     ./include/utils/ucstring.hpp
     ./include/cli_preprocessor.hpp
-    ./include/CLI11.hpp
 )
 
 source_group("Headers" FILES ${HEADERS_FILES})

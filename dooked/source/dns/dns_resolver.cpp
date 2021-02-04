@@ -5,13 +5,15 @@
 #include "utils/ucstring.hpp"
 #include <spdlog/spdlog.h>
 
+extern bool silent;
+
 namespace dooked {
 
 dns_rec_list_t const dns_supported_record_type_t::supported_types{
     dns_record_type_e::DNS_REC_A,     dns_record_type_e::DNS_REC_AAAA,
     dns_record_type_e::DNS_REC_CNAME, dns_record_type_e::DNS_REC_MX,
     dns_record_type_e::DNS_REC_TXT,   dns_record_type_e::DNS_REC_NS,
-    dns_record_type_e::DNS_REC_PTR,   dns_record_type_e::DNS_REC_DNAME};
+    dns_record_type_e::DNS_REC_PTR};
 
 void set_dns_header_value(ucstring_t::pointer q, std::uint16_t id) {
   set_qid(q, id);
@@ -125,6 +127,9 @@ void custom_resolver_socket_t::dns_send_next_request() {
   try {
     if (name_.empty()) {
       name_ = names_.next_item();
+      if (!silent) {
+        spdlog::info("Processing {}", name_);
+      }
     }
     dns_retries_ = 0;
     current_rec_type_ = dns_next_record_type();
@@ -134,6 +139,9 @@ void custom_resolver_socket_t::dns_send_next_request() {
       }
       name_ = names_.next_item();
       current_rec_type_ = dns_next_record_type();
+      if (!silent) {
+        spdlog::info("Processing {}", name_);
+      }
     }
 
     auto const query_id = get_random_integer();
@@ -142,8 +150,16 @@ void custom_resolver_socket_t::dns_send_next_request() {
     dns_create_query(name_, query_type, query_id, send_buffer_);
     dns_send_network_request();
   } catch (empty_container_exception_t const &) {
+#ifdef _DEBUG
+    spdlog::info("connector done.");
+#endif
+    if (http_request_handler_) {
+      http_request_handler_.reset();
+    }
   } catch (bad_name_exception_t const &except) {
-    spdlog::error(except.what());
+    if (!silent) {
+      spdlog::error(except.what());
+    }
   }
 }
 
@@ -158,7 +174,7 @@ void custom_resolver_socket_t::dns_continue_probe() {
 }
 
 void custom_resolver_socket_t::dns_send_network_request() {
-  if (dns_retries_++ > DOOKED_MAX_DNS_RETRIES) {
+  if (dns_retries_++ > DOOKED_MAX_RETRIES) {
     return dns_send_next_request();
   }
   if (!udp_stream_) {
@@ -214,14 +230,18 @@ void custom_resolver_socket_t::dns_on_data_received(
   try {
     if (!parse_dns_response(packet, recv_buffer_) ||
         packet.head.questions.empty()) {
-      spdlog::info("Retrying {} for {}",
-                   dns_record_type_to_str(current_rec_type_), name_);
+      if (!silent) {
+        spdlog::info("Retrying {} for {}",
+                     dns_record_type_to_str(current_rec_type_), name_);
+      }
       udp_stream_.reset();
       return dns_send_network_request();
     }
     dns_serialize_packet(packet);
   } catch (std::exception const &e) {
-    spdlog::error(e.what());
+    if (silent) {
+      spdlog::error(e.what());
+    }
   }
   dns_send_next_request();
 }
@@ -251,7 +271,9 @@ bool custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet,
   auto const rcode = static_cast<dns_rcode_e>(header.rcode);
 
   if (rcode != dns_rcode_e::DNS_RCODE_NO_ERROR) {
-    spdlog::error("Response code: {}", rcode_to_string(rcode));
+    if (!silent) {
+      spdlog::error("Response code: {}", rcode_to_string(rcode));
+    }
     return false;
   }
 
@@ -264,7 +286,9 @@ bool custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet,
     bool const successful = parse_name(data, rdata, data + buffer_len,
                                        name.name, &name.name_length, &new_end);
     if ((new_end + 2) > (data + buffer_len) || !successful) {
-      spdlog::error("There was an error parsing the question");
+      if (!silent) {
+        spdlog::error("There was an error parsing the question");
+      }
       return false;
     }
     auto const type = static_cast<dns_record_type_e>(uint16_value(new_end));
@@ -355,14 +379,14 @@ void custom_resolver_socket_t::send_https_request(std::string const &address) {
 }
 
 void custom_resolver_socket_t::on_http_resolve_error() {
-  // by default we do http resolve first, that may fail if the
+  // by default we do http resolve, that may fail if the
   // address is strictly HTTPS, so let's resolve to HTTPS
   auto https_socket_type =
       std::get_if<https_request_handler_t>(&(http_request_handler_->request_));
   if (!https_socket_type) {
     return send_https_request(name_);
   }
-  // if we are here, we must have tried https too and it fails.
+  // if we are here, we must have tried https too and it failed.
   result_map_.insert(name_, 0,
                      static_cast<int>(response_type_e::cannot_resolve_name));
   return dns_continue_probe();
@@ -390,16 +414,14 @@ void custom_resolver_socket_t::http_result_obtained(
     return dns_continue_probe();
   }
   case response_type_e::http_redirected: {
-    ++http_redirects_count_;
-    if (http_redirects_count_ >= 10) { // too many redirects
+    if (++http_redirects_count_ >= DOOKED_MAX_REDIRECTS) { // too many redirects
       result_map_.insert(name_, 0, 309);
       return dns_continue_probe();
     }
     return send_http_request(response_string);
   }
   case response_type_e::https_redirected: {
-    ++http_redirects_count_;
-    if (http_redirects_count_ >= 10) { // too many redirects
+    if (++http_redirects_count_ >= DOOKED_MAX_REDIRECTS) { // too many redirects
       result_map_.insert(name_, 0, 309);
       return dns_continue_probe();
     }
@@ -414,8 +436,7 @@ void custom_resolver_socket_t::http_result_obtained(
     return dns_continue_probe();
   }
   case response_type_e::recv_timed_out: { // retry, wait timeout
-    ++http_retries_count_;
-    if (http_retries_count_ > 5) {
+    if (++http_retries_count_ >= DOOKED_MAX_RETRIES) {
       result_map_.insert(name_, 0, static_cast<int>(rt));
       return dns_continue_probe();
     }

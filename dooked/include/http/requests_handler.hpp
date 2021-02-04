@@ -16,7 +16,7 @@
 #include <variant>
 
 // max http wait time in seconds
-#define DOOKED_MAX_HTTP_WAIT_TIME 10
+#define DOOKED_MAX_HTTP_WAIT_TIME 15
 
 namespace dooked {
 namespace net = boost::asio;
@@ -110,4 +110,8 @@ struct temporary_ssl_holder_t {
 
 net::ssl::context &get_tlsv13_context();
 bool starts_with(std::string const &str, std::string const &prefix);
+void report_error(std::string const &);
+void report_error(char const *, std::string const &);
+void report_error(char const *format, int, bool, std::string const &);
+
 } // namespace dooked

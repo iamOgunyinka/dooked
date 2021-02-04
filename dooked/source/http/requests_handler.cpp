@@ -5,6 +5,7 @@
 
 // defined in dooked.cpp
 extern bool no_bytes_count;
+extern bool silent;
 
 namespace dooked {
 
@@ -121,9 +122,10 @@ void http_request_handler_t::on_data_received(
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
 #ifdef _DEBUG
-    printf("HTTP error: %s\n", ec.message().c_str());
+    if (!silent) {
+      report_error("HTTP error: {}", ec.message());
+    }
 #endif // _DEBUG
-
     if (callback_) {
       callback_(response_type_e::recv_timed_out, 0, {});
     }
@@ -217,8 +219,9 @@ void https_request_handler_t::on_ssl_handshake(
     bool const ssl_error = ec.category() == net::error::get_ssl_category();
 #ifdef _DEBUG
     auto const err_message = ec.message();
-    printf("SSL handshake(%d)(%s): %s\n", ec.value(),
-           (ssl_error ? "true" : "false"), err_message.c_str());
+    if (!silent) {
+      report_error("SSL handshake({})({}): {}\n", ec.value(), ssl_error, err_message);
+    }
 #endif // _DEBUG
     if (ssl_error && ERR_PACK(ERR_LIB_SSL, 0, SSL_R_WRONG_VERSION_NUMBER)) {
       error_type = response_type_e::ssl_change_to_http;
@@ -302,7 +305,9 @@ void https_request_handler_t::reconnect() {
 void https_request_handler_t::on_connect(beast::error_code const ec) {
   if (ec) {
 #ifdef _DEBUG
-    puts("Could not connect. Will reconnect now...\n");
+    if (!silent) {
+      report_error("Could not connect. Will reconnect now...");
+    }
 #endif
     return reconnect();
   }

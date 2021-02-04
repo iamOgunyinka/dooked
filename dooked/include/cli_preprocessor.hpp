@@ -8,7 +8,6 @@
 // supported by the hardware
 
 #define DOOKED_SUPPORTED_THREADS ((std::size_t)std::thread::hardware_concurrency())
-#define DOOKED_MAX_OPEN_SOCKET ((std::size_t)(DOOKED_SUPPORTED_THREADS * 2))
 
 namespace dooked {
 
@@ -40,5 +39,6 @@ struct runtime_args_t {
 };
 
 void run_program(cli_args_t const &cli_args);
+void print_banner();
 bool case_insensitive_compare(std::string const &, std::string const &);
 } // namespace dooked
