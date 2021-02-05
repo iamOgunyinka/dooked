@@ -55,8 +55,8 @@ void http_request_handler_t::resolve_name() {
         if (error) {
           if (callback_) {
             callback_(response_type_e::cannot_resolve_name, 0, error.message());
-            return;
           }
+          return;
         }
         resolved_ip_addresses_.clear();
         resolved_ip_addresses_.reserve(results.size());
@@ -77,11 +77,11 @@ void http_request_handler_t::on_connected(beast::error_code const ec) {
 void http_request_handler_t::reconnect() {
   if (++connect_retries_ >= 3) {
     if (callback_) {
-      return callback_(response_type_e::cannot_connect, 0, {});
+      callback_(response_type_e::cannot_connect, 0, {});
     }
-  } else {
-    establish_connection();
+    return;
   }
+  establish_connection();
 }
 
 void http_request_handler_t::send_http_data() {
@@ -111,7 +111,7 @@ void http_request_handler_t::receive_data() {
   buffer_ = {};
 
   http::async_read(*socket_, buffer_, *response_,
-                   [this](beast::error_code const ec, std::size_t const sz) {
+                   [this](auto const ec, std::size_t const sz) {
                      on_data_received(ec, sz);
                    });
 }
@@ -159,6 +159,11 @@ void http_request_handler_t::on_data_received(
   } else if (status_code_simple == 5) {
     response_int = response_type_e::server_error;
   } else {
+#ifdef _DEBUG
+    if (!silent) {
+      report_error("HTTP else: {}", response_->body());
+    }
+#endif // _DEBUG
     response_int = response_type_e::unknown_response;
   }
 
@@ -187,8 +192,8 @@ void http_request_handler_t::on_data_received(
 https_request_handler_t::https_request_handler_t(net::io_context &io_context,
                                                  net::ssl::context &ssl_context,
                                                  std::string name)
-    : io_{io_context}, ssl_context_{ssl_context}, domain_name_{
-                                                      std::move(name)} {}
+    : io_{io_context}, ssl_context_{ssl_context},
+      domain_name_(std::move(name)) {}
 
 void https_request_handler_t::start(completion_cb_t callback) {
   callback_ = std::move(callback);
@@ -215,21 +220,22 @@ void https_request_handler_t::perform_ssl_handshake() {
 void https_request_handler_t::on_ssl_handshake(
     boost::system::error_code const ec) {
   if (ec) {
-    auto error_type = response_type_e::ssl_handshake_failed;
     bool const ssl_error = ec.category() == net::error::get_ssl_category();
 #ifdef _DEBUG
     auto const err_message = ec.message();
     if (!silent) {
-      report_error("SSL handshake({})({}): {}\n", ec.value(), ssl_error, err_message);
+      report_error("SSL handshake({})({}): {}\n", ec.value(), ssl_error,
+                   err_message);
     }
 #endif // _DEBUG
-    if (ssl_error && ERR_PACK(ERR_LIB_SSL, 0, SSL_R_WRONG_VERSION_NUMBER)) {
-      error_type = response_type_e::ssl_change_to_http;
-    } else if (ec.value() == 10'054) { // try switching to HTTP
-      error_type = response_type_e::ssl_change_to_http;
+    response_type_e error_type{response_type_e::unknown_response};
+    if (!ssl_error) { // most likely a timeout
+      error_type = response_type_e::ssl_timed_out;
+    } else {
+      error_type = response_type_e::ssl_change_context;
     }
     if (callback_) {
-      callback_(error_type, 0, ec.message());
+      callback_(error_type, 0, domain_name_);
     }
     return;
   }
@@ -343,9 +349,7 @@ void https_request_handler_t::on_data_received(
     beast::error_code const ec, std::size_t const bytes_received) {
   response_type_e response_int = response_type_e::unknown_response;
   if (ec) {
-    if (ec != beast::error::timeout) {
-      response_int = response_type_e::ssl_change_to_http;
-    } else {
+    if (ec == beast::error::timeout) {
       response_int = response_type_e::recv_timed_out;
     }
     if (callback_) {
@@ -409,6 +413,20 @@ net::ssl::context &get_tlsv13_context() {
   if (!ssl_context) {
     ssl_context =
         std::make_unique<net::ssl::context>(net::ssl::context::tlsv13_client);
+    ssl_context->set_default_verify_paths();
+    ssl_context->set_verify_mode(net::ssl::verify_none);
+    ssl_context->set_options(net::ssl::context::default_workarounds |
+                             net::ssl::context::no_sslv2 |
+                             net::ssl::context::no_sslv3);
+  }
+  return *ssl_context;
+}
+
+net::ssl::context &get_tlsv11_context() {
+  static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
+  if (!ssl_context) {
+    ssl_context =
+        std::make_unique<net::ssl::context>(net::ssl::context::tlsv11_client);
     ssl_context->set_default_verify_paths();
     ssl_context->set_verify_mode(net::ssl::verify_none);
     ssl_context->set_options(net::ssl::context::default_workarounds |

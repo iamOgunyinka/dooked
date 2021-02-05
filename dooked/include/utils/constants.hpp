@@ -21,8 +21,7 @@ enum class response_type_e : std::uint8_t {
   bad_request = 40,
   forbidden = 43,
   ssl_change_context = 70,
-  ssl_change_to_http = 71,
-  ssl_handshake_failed = 72
+  ssl_timed_out = 71
 };
 
 enum class dns_record_type_e : std::uint16_t {

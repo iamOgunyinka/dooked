@@ -14,7 +14,8 @@ void http_resolver_t::send_next_request() {
   try {
     http_retries_count_ = http_redirects_count_ = 0;
     if (!is_default_tls_) {
-      default_tls_context_ = tls13_holder_->original_ssl_context_;
+      default_tls_context_ = tls_holder_->original_ssl_context_;
+      is_default_tls_ = 1;
     }
     name_ = names_.next_item();
     perform_http_request();
@@ -117,12 +118,9 @@ void http_resolver_t::tcp_request_result(response_type_e const rt,
       return send_https_request(response_string);
     }
   }
-  case response_type_e::ssl_change_context:
-  case response_type_e::ssl_handshake_failed: {
+  case response_type_e::ssl_change_context: {
     return switch_ssl_method(response_string);
   }
-  case response_type_e::ssl_change_to_http:
-    return send_http_request(name_);
   case response_type_e::server_error: {
     result_map_.insert(name_, content_length, 503);
     return send_next_request();
@@ -137,21 +135,31 @@ void http_resolver_t::tcp_request_result(response_type_e const rt,
 }
 
 void http_resolver_t::switch_ssl_method(std::string const &name) {
-  if (!tls13_holder_ || is_default_tls_) {
-    if (!tls13_holder_) { // first time switching SSL context, tls_v12
+  if (!tls_holder_ || is_default_tls_) {
+    if (!tls_holder_) { // first time switching SSL context
       auto &tls_v13_context = get_tlsv13_context();
-      auto &ssl_holder =
-          tls13_holder_.emplace(tls_v13_context, default_tls_context_);
+      tls_holder_.emplace(&tls_v13_context, default_tls_context_,
+                          ssl_method_e::tls_v13);
     }
-    default_tls_context_ = &(tls13_holder_->tls_v13_context_);
+    tls_holder_->method_ = ssl_method_e::tls_v13;
+    default_tls_context_ = tls_holder_->tls_other_context_;
     is_default_tls_ = 0;
     return send_https_request(name);
-  } else {
-    // switch back to tls v 1.2
-    default_tls_context_ = tls13_holder_->original_ssl_context_;
-    is_default_tls_ = 1;
-    send_next_request();
   }
+  // we must have tried tls v1.2 and tls v1.3, so let's try 1.1
+  if (tls_holder_->method_ == ssl_method_e::tls_v13) {
+    auto &tls_v11_context = get_tlsv11_context();
+    tls_holder_->tls_other_context_ = &tls_v11_context;
+    default_tls_context_ = tls_holder_->tls_other_context_;
+    is_default_tls_ = 0;
+    return send_https_request(name);
+  }
+
+  // if we are here, then the requested TLS is not supported here,
+  // so we switch back to tls v1.2 and move on
+  default_tls_context_ = tls_holder_->original_ssl_context_;
+  is_default_tls_ = 1;
+  send_next_request();
 }
 
 } // namespace dooked

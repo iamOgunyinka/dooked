@@ -168,7 +168,8 @@ void custom_resolver_socket_t::dns_continue_probe() {
   http_redirects_count_ = http_retries_count_ = 0;
   if (!is_default_tls_) {
     // switch back to tls v1.2
-    ssl_context_ = tls_v13_holder_->original_ssl_context_;
+    ssl_context_ = other_tls_holder_->original_ssl_context_;
+    is_default_tls_ = 1;
   }
   dns_send_next_request();
 }
@@ -343,17 +344,29 @@ void custom_resolver_socket_t::dns_serialize_packet(
 
 void custom_resolver_socket_t::http_switch_tls_requested(
     std::string const &name) {
-  if (!tls_v13_holder_ || is_default_tls_) {
-    if (!tls_v13_holder_) { // first time switching SSL context, tls_v12
+  if (!other_tls_holder_ || is_default_tls_) {
+    if (!other_tls_holder_) { // first time switching SSL context
       auto &tls_v13_context = get_tlsv13_context();
-      auto &ssl_holder = tls_v13_holder_.emplace(tls_v13_context, ssl_context_);
+      other_tls_holder_.emplace(&tls_v13_context, ssl_context_,
+                                ssl_method_e::tls_v13);
     }
-    ssl_context_ = &(tls_v13_holder_->tls_v13_context_);
+    other_tls_holder_->method_ = ssl_method_e::tls_v13;
+    ssl_context_ = other_tls_holder_->tls_other_context_;
     is_default_tls_ = 0;
     return send_https_request(name);
   }
-  // switch back to tls v 1.2
-  ssl_context_ = tls_v13_holder_->original_ssl_context_;
+  // we must have tried tls v1.2 and tls v1.3, so let's try 1.1
+  if (other_tls_holder_->method_ == ssl_method_e::tls_v13) {
+    auto &tls_v11_context = get_tlsv11_context();
+    other_tls_holder_->tls_other_context_ = &tls_v11_context;
+    ssl_context_ = other_tls_holder_->tls_other_context_;
+    is_default_tls_ = 0;
+    return send_https_request(name);
+  }
+
+  // if we are here, then the requested TLS is not supported here,
+  // so we switch back to tls v1.2 and move on
+  ssl_context_ = other_tls_holder_->original_ssl_context_;
   is_default_tls_ = 1;
   dns_send_next_request();
 }
@@ -449,11 +462,13 @@ void custom_resolver_socket_t::http_result_obtained(
     }
   }
   case response_type_e::ssl_change_context:
-  case response_type_e::ssl_handshake_failed: {
     return http_switch_tls_requested(response_string);
-  }
-  case response_type_e::ssl_change_to_http: {
-    return send_http_request(name_);
+  case response_type_e::ssl_timed_out: {
+    if (++http_retries_count_ >= DOOKED_MAX_RETRIES) {
+      result_map_.insert(name_, 0, static_cast<int>(rt));
+      return dns_continue_probe();
+    }
+    return send_https_request(response_string);
   }
   case response_type_e::server_error: {
     result_map_.insert(name_, content_length, 503);

@@ -12,7 +12,7 @@ class http_resolver_t {
   map_container_t<probe_result_t> &result_map_;
   ssl::context *default_tls_context_{nullptr};
   std::optional<request_t> http_request_handler_{};
-  std::optional<temporary_ssl_holder_t> tls13_holder_{};
+  std::optional<temporary_ssl_holder_t> tls_holder_{};
   std::string name_{};
   int http_redirects_count_{};
   int http_retries_count_{};

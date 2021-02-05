@@ -38,7 +38,7 @@ class custom_resolver_socket_t {
   std::optional<net::ip::udp::endpoint> default_ep_{};
   std::optional<net::steady_timer> timer_{};
   std::optional<request_t> http_request_handler_{};
-  std::optional<temporary_ssl_holder_t> tls_v13_holder_{};
+  std::optional<temporary_ssl_holder_t> other_tls_holder_{};
   resolver_address_t current_resolver_{};
   int last_processed_dns_index_{-1};
   int http_retries_count_{};

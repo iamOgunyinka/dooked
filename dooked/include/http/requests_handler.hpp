@@ -16,7 +16,7 @@
 #include <variant>
 
 // max http wait time in seconds
-#define DOOKED_MAX_HTTP_WAIT_TIME 15
+#define DOOKED_MAX_HTTP_WAIT_TIME 30
 
 namespace dooked {
 namespace net = boost::asio;
@@ -25,6 +25,7 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 
 enum class ssl_method_e {
+  tls_v11 = net::ssl::context::tlsv11_client,
   tls_v12 = net::ssl::context::tlsv12_client,
   tls_v13 = net::ssl::context::tlsv13_client,
   undefined
@@ -43,6 +44,7 @@ class http_request_handler_t {
   beast::flat_buffer buffer_{};
   int connect_retries_{};
   int send_retries_{};
+  // int receive_retries_{};
   completion_cb_t callback_{nullptr};
 
 private:
@@ -102,13 +104,15 @@ struct request_t {
 };
 
 struct temporary_ssl_holder_t {
-  ssl::context &tls_v13_context_;
+  ssl::context *tls_other_context_; // tls v11 or v13
   ssl::context *original_ssl_context_;
-  temporary_ssl_holder_t(ssl::context &cr, ssl::context *cp)
-      : tls_v13_context_{cr}, original_ssl_context_{cp} {}
+  ssl_method_e method_;
+  temporary_ssl_holder_t(ssl::context *cr, ssl::context *cp, ssl_method_e m)
+      : tls_other_context_{cr}, original_ssl_context_{cp}, method_{m} {}
 };
 
 net::ssl::context &get_tlsv13_context();
+net::ssl::context &get_tlsv11_context();
 bool starts_with(std::string const &str, std::string const &prefix);
 void report_error(std::string const &);
 void report_error(char const *, std::string const &);
