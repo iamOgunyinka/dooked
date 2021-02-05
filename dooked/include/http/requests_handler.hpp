@@ -25,6 +25,7 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 
 enum class ssl_method_e {
+  tls_v10 = net::ssl::context::tlsv1_client,
   tls_v11 = net::ssl::context::tlsv11_client,
   tls_v12 = net::ssl::context::tlsv12_client,
   tls_v13 = net::ssl::context::tlsv13_client,
@@ -104,15 +105,17 @@ struct request_t {
 };
 
 struct temporary_ssl_holder_t {
-  ssl::context *tls_other_context_; // tls v11 or v13
+  ssl::context *tls_other_context_; // tls v10, v11 or v13
   ssl::context *original_ssl_context_;
   ssl_method_e method_;
   temporary_ssl_holder_t(ssl::context *cr, ssl::context *cp, ssl_method_e m)
       : tls_other_context_{cr}, original_ssl_context_{cp}, method_{m} {}
 };
 
-net::ssl::context &get_tlsv13_context();
+void setup_tls_context_client(std::unique_ptr<ssl::context> &, ssl_method_e);
+net::ssl::context &get_tlsv10_context();
 net::ssl::context &get_tlsv11_context();
+net::ssl::context &get_tlsv13_context();
 bool starts_with(std::string const &str, std::string const &prefix);
 void report_error(std::string const &);
 void report_error(char const *, std::string const &);

@@ -2,6 +2,7 @@
 #include "utils/random_utils.hpp"
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/http/write.hpp>
+#include <mutex>
 
 // defined in dooked.cpp
 extern bool no_bytes_count;
@@ -408,31 +409,44 @@ void https_request_handler_t::on_data_received(
   }
 }
 
-net::ssl::context &get_tlsv13_context() {
-  static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
+void setup_tls_context_client(std::unique_ptr<ssl::context> &ssl_context,
+                              ssl_method_e const method) {
+  static std::mutex ssl_global_mutex{};
   if (!ssl_context) {
-    ssl_context =
-        std::make_unique<net::ssl::context>(net::ssl::context::tlsv13_client);
+    std::lock_guard<std::mutex> lock_g{ssl_global_mutex};
+    // by the time this thread acquires the mutex, context may have been
+    // initialized, so check again
+    if (ssl_context) {
+      return;
+    }
+    auto const client_type = static_cast<net::ssl::context::method>(method);
+    ssl_context = std::make_unique<net::ssl::context>(client_type);
     ssl_context->set_default_verify_paths();
     ssl_context->set_verify_mode(net::ssl::verify_none);
     ssl_context->set_options(net::ssl::context::default_workarounds |
                              net::ssl::context::no_sslv2 |
                              net::ssl::context::no_sslv3);
   }
+}
+
+net::ssl::context &get_tlsv13_context() {
+  // tls 1.3
+  static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
+  setup_tls_context_client(ssl_context, ssl_method_e::tls_v13);
   return *ssl_context;
 }
 
 net::ssl::context &get_tlsv11_context() {
+  // tls 1.1
   static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
-  if (!ssl_context) {
-    ssl_context =
-        std::make_unique<net::ssl::context>(net::ssl::context::tlsv11_client);
-    ssl_context->set_default_verify_paths();
-    ssl_context->set_verify_mode(net::ssl::verify_none);
-    ssl_context->set_options(net::ssl::context::default_workarounds |
-                             net::ssl::context::no_sslv2 |
-                             net::ssl::context::no_sslv3);
-  }
+  setup_tls_context_client(ssl_context, ssl_method_e::tls_v11);
+  return *ssl_context;
+}
+
+net::ssl::context &get_tlsv10_context() {
+  // tls 1.0
+  static std::unique_ptr<net::ssl::context> ssl_context{nullptr};
+  setup_tls_context_client(ssl_context, ssl_method_e::tls_v10);
   return *ssl_context;
 }
 

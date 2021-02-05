@@ -149,8 +149,14 @@ void http_resolver_t::switch_ssl_method(std::string const &name) {
   // we must have tried tls v1.2 and tls v1.3, so let's try 1.1
   if (tls_holder_->method_ == ssl_method_e::tls_v13) {
     auto &tls_v11_context = get_tlsv11_context();
-    tls_holder_->tls_other_context_ = &tls_v11_context;
-    default_tls_context_ = tls_holder_->tls_other_context_;
+    default_tls_context_ = &tls_v11_context;
+    is_default_tls_ = 0;
+    tls_holder_->method_ = ssl_method_e::tls_v11;
+    return send_https_request(name);
+  } else if (tls_holder_->method_ == ssl_method_e::tls_v11) {
+    auto &tls_v10_context = get_tlsv10_context();
+    default_tls_context_ = &tls_v10_context;
+    tls_holder_->method_ = ssl_method_e::tls_v10;
     is_default_tls_ = 0;
     return send_https_request(name);
   }

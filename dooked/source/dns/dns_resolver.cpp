@@ -358,9 +358,15 @@ void custom_resolver_socket_t::http_switch_tls_requested(
   // we must have tried tls v1.2 and tls v1.3, so let's try 1.1
   if (other_tls_holder_->method_ == ssl_method_e::tls_v13) {
     auto &tls_v11_context = get_tlsv11_context();
-    other_tls_holder_->tls_other_context_ = &tls_v11_context;
-    ssl_context_ = other_tls_holder_->tls_other_context_;
+    ssl_context_ = &tls_v11_context;
+    other_tls_holder_->method_ = ssl_method_e::tls_v11;
     is_default_tls_ = 0;
+    return send_https_request(name);
+  } else if (other_tls_holder_->method_ == ssl_method_e::tls_v11) {
+    auto &tls_v10_context = get_tlsv10_context();
+    ssl_context_ = &tls_v10_context;
+    is_default_tls_ = 0;
+    other_tls_holder_->method_ = ssl_method_e::tls_v10;
     return send_https_request(name);
   }
 
