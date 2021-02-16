@@ -1,5 +1,12 @@
 # dooked
 A reconnaissance tool ... 
+
+## Requirements
+- Boost C++ library
+- libssl-dev (Linux) or openssl (Mac)
+- cmake
+- any C++ compiler supporting C++17
+
 ## Installation
 - Download Boost Library from the [official website](https://www.boost.org/users/download/)
 - Extract the library into any directory
@@ -25,11 +32,6 @@ cd ../
 cmake .
 make
 ```
-
-## Requirements
-- Boost C++ library
-- cmake
-- any C++ compiler (supporting C++17) or MSVC(for Windows).
 
 ## Usage
 

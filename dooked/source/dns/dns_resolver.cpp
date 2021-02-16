@@ -250,7 +250,7 @@ void custom_resolver_socket_t::dns_on_data_received(
 bool custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet,
                                                   ucstring_t &buff) {
   int const buffer_len = buff.size();
-  if (buffer_len < 12) {
+  if (buffer_len < sizeof_packet_header) {
     throw invalid_dns_response_t("Corrupted DNS packet: too small for header");
   }
 
@@ -280,7 +280,7 @@ bool custom_resolver_socket_t::parse_dns_response(dns_packet_t &packet,
 
   /* read question section -- which would almost always be 1.*/
   auto &questions = packet.head.questions;
-  auto rdata = buff.data() + 12;
+  auto rdata = buff.data() + sizeof_packet_header;
   for (int t = 0; t < question_count; t++) {
     static_string_t name{};
     unsigned char *new_end{};

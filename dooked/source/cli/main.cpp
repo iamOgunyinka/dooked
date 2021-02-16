@@ -1,4 +1,4 @@
-#include "cli_preprocessor.hpp"
+#include "cli/preprocessor.hpp"
 #include <CLI/CLI.hpp>
 
 // we've tried as much as possible to stay away from global variables but
@@ -11,14 +11,15 @@ bool silent = false;
 bool compare_cl = false;
 
 int main(int argc, char **argv) {
-  CLI::App app{"dooked -- a CLI tool to enumerate DNS info"};
+  CLI::App app{
+      "dooked -- DNS and Target HTTP History Local Storage and Search"};
   dooked::cli_args_t cli_args{};
 
   app.add_option("-o,--output", cli_args.output_filename,
                  "write result to output file");
   app.add_option(
       "-f,--file-type", cli_args.file_type,
-      "the file type used as input file: (default)txt=0, txt=1, unknown=2");
+      "the file type used as input file: (default)txt=0, json=1, unknown=2");
   app.add_option(
       "-i,--input-file", cli_args.input_filename,
       "if not using stdin, this is the input file to use, type is deduceable "
@@ -38,15 +39,15 @@ int main(int argc, char **argv) {
                "append present datetime(-ddMMyyyy_hhmmss) in output name");
   app.add_flag(
       "--defer", cli_args.post_http_request,
-      "defers http request until after all DNS requests have been completed");
+      "defer http requests until after all DNS requests have been completed");
   app.add_flag("--compare-cl", compare_cl,
                "compare content-length of HTTP requests");
-
   app.add_flag("--nbc", no_bytes_count,
                "in case `content-length` is missing in an HTTP header field,"
                "program returns 0 as the content-length as opposed the total"
                "bytes returned from the call to I/O socket read");
-  app.add_flag("--silent", silent, "do not show any DNS or HTTP info");
+  app.add_flag("--silent", silent,
+               "do not show any DNS or HTTP info while evaluating queries");
 
   CLI11_PARSE(app, argc, argv);
 
