@@ -24,6 +24,7 @@ include_directories(${PROJECT_DIR}/spdlog/include)
 
 
 link_directories(/usr/lib)
+link_libraries(stdc++fs)
 link_libraries(pthread ssl crypto)
 
 # Outputs
@@ -73,7 +74,7 @@ set(SRC_FILES
     ./source/utils/random_utils.cpp
     ./source/utils/ucstring.cpp
     ./source/cli/preprocessor.cpp
-    ./source/cli/main.cpp
+    ./source/main.cpp
 )
 
 source_group("Sources" FILES ${SRC_FILES})
